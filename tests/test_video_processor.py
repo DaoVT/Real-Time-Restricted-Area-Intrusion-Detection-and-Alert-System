@@ -12,6 +12,7 @@ from backend.app.video_processor import (
     load_zone_file,
     prepare_detection_frame,
     scale_detections,
+    select_yolo_device,
 )
 
 
@@ -62,3 +63,7 @@ def test_prepare_detection_frame_and_scale_detections():
 
     [detection] = scale_detections([Detection(track_id=1, bbox=(10, 20, 30, 40), confidence=0.9)], scale_x, scale_y)
     assert detection.bbox == (30, 60, 90, 120)
+
+
+def test_select_yolo_device_returns_supported_value():
+    assert select_yolo_device() in {0, "cpu"}

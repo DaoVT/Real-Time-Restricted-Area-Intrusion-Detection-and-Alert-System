@@ -60,6 +60,18 @@ Result:
 {'stopped': False, 'output_video': 'backend\\output\\e2e-fast2\\result.mp4', 'events_csv': 'backend\\output\\e2e-fast2\\events.csv', 'intrusion_count': 6}
 ```
 
+Live no-output-video E2E with CUDA venv:
+
+```powershell
+D:\venvs\intrusion\Scripts\python.exe -m app.cli --input ..\sample-videos\sample.mp4 --zone ..\sample-videos\zone.json --output backend\output\e2e-live-no-video --process-width 640 --frame-stride 3 --no-output-video
+```
+
+Result:
+
+```text
+{'stopped': False, 'output_video': None, 'events_csv': 'backend\\output\\e2e-live-no-video\\events.csv', 'intrusion_count': 6}
+```
+
 Output inspection:
 
 ```powershell
@@ -81,6 +93,8 @@ npm run build
 - Added `lap>=0.5.12` to `requirements.txt` because Ultralytics ByteTrack requires it.
 - Added `sample-videos/` to `.gitignore` so local test videos are not committed.
 - Added Fast Mode with `process_width` and `frame_stride` for faster CPU demos.
+- Added YOLO device selection: prefer GPU `0` when CUDA is available, otherwise CPU.
+- Added `save_output_video` / `--no-output-video` so live preview jobs can skip MP4 writing.
 
 ## Files Changed
 
@@ -215,6 +229,37 @@ evidence_count 6
 ```
 
 Fast Mode processed fewer frames and produced fewer intrusion events than accurate mode. This is expected: it trades some temporal precision for faster CPU processing.
+
+## Live No-Output-Video E2E Output
+
+Output folder:
+
+```text
+backend\output\e2e-live-no-video
+```
+
+Settings:
+
+```text
+process_width 640
+frame_stride 3
+no_output_video true
+python D:\venvs\intrusion\Scripts\python.exe
+torch 2.6.0+cu124
+cuda NVIDIA GeForce MX550
+```
+
+Output inspection:
+
+```text
+result_exists False
+csv_rows 6
+evidence_count 6
+first_event_frame 313
+first_event_track_id 1
+```
+
+This mode skipped MP4 writing and completed substantially faster than the previous Fast Mode run that wrote `result.mp4`.
 
 ## Real E2E Checklist
 

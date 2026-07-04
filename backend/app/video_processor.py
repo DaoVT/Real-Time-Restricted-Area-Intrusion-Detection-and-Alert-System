@@ -39,6 +39,7 @@ class PersonDetector:
         except Exception as exc:
             raise RuntimeError("ultralytics is not installed or cannot be imported") from exc
         self.model = YOLO(model_name)
+        self.device = select_yolo_device()
 
     def track(self, frame: np.ndarray) -> list[Detection]:
         results = self.model.track(
@@ -47,6 +48,7 @@ class PersonDetector:
             tracker="bytetrack.yaml",
             classes=[0],
             conf=self.confidence,
+            device=self.device,
             verbose=False,
         )
         detections: list[Detection] = []
@@ -139,6 +141,7 @@ class VideoProcessor:
         detector: PersonDetector | None = None,
         process_width: int | None = None,
         frame_stride: int = 1,
+        save_output_video: bool = True,
     ) -> None:
         self.input_path = Path(input_path)
         self.output_dir = Path(output_dir)
@@ -151,6 +154,7 @@ class VideoProcessor:
         self.detector = detector
         self.process_width = process_width
         self.frame_stride = max(frame_stride, 1)
+        self.save_output_video = save_output_video
 
     def run(self) -> dict:
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -169,14 +173,15 @@ class VideoProcessor:
             total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
             source_fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
             output_fps = max(source_fps / self.frame_stride, 1.0)
-            writer = cv2.VideoWriter(
-                str(output_video),
-                cv2.VideoWriter_fourcc(*"mp4v"),
-                output_fps,
-                (width, height),
-            )
-            if not writer.isOpened():
-                raise RuntimeError("cannot create output video writer")
+            if self.save_output_video:
+                writer = cv2.VideoWriter(
+                    str(output_video),
+                    cv2.VideoWriter_fourcc(*"mp4v"),
+                    output_fps,
+                    (width, height),
+                )
+                if not writer.isOpened():
+                    raise RuntimeError("cannot create output video writer")
 
             detector = self.detector or PersonDetector(self.confidence)
             zone = ZoneDetector(self.zone_points, width, height)
@@ -220,7 +225,8 @@ class VideoProcessor:
                         csv_writer.writerow(event)
                         intrusion_events.append(event)
 
-                    writer.write(frame)
+                    if writer is not None:
+                        writer.write(frame)
                     elapsed = max(time.perf_counter() - started_at, 0.001)
                     stats = {
                         "progress": min(frame_index / total_frames, 1.0),
@@ -243,7 +249,7 @@ class VideoProcessor:
 
             return {
                 "stopped": self.stop_event.is_set(),
-                "output_video": str(output_video),
+                "output_video": str(output_video) if self.save_output_video else None,
                 "events_csv": str(events_csv),
                 "intrusion_count": intrusion_count,
             }
@@ -275,6 +281,14 @@ def prepare_detection_frame(frame: np.ndarray, process_width: int | None) -> tup
     resized_height = max(1, int(height * scale))
     resized = cv2.resize(frame, (resized_width, resized_height))
     return resized, width / resized_width, height / resized_height
+
+
+def select_yolo_device() -> int | str:
+    try:
+        import torch
+    except Exception:
+        return "cpu"
+    return 0 if torch.cuda.is_available() else "cpu"
 
 
 def load_zone_file(path: Path) -> list[dict]:

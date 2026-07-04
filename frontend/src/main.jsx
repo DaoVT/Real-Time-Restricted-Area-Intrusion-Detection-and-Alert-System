@@ -330,6 +330,7 @@ function App() {
           confirm_frames: 5,
           process_width: fastMode ? 640 : null,
           frame_stride: fastMode ? 3 : 1,
+          save_output_video: !fastMode,
           zone_points: points
         })
       });

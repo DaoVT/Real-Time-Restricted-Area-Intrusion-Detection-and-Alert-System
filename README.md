@@ -38,6 +38,12 @@ Fast mode for quicker CPU demos:
 python -m app.cli --input sample.mp4 --zone zone.json --process-width 640 --frame-stride 3
 ```
 
+Live preview without writing an output video:
+
+```powershell
+python -m app.cli --input sample.mp4 --zone zone.json --process-width 640 --frame-stride 3 --no-output-video
+```
+
 The backend implementation is also available directly:
 
 ```powershell

@@ -15,6 +15,7 @@ def main() -> int:
     parser.add_argument("--confirm-frames", default=5, type=int)
     parser.add_argument("--process-width", default=None, type=int)
     parser.add_argument("--frame-stride", default=1, type=int)
+    parser.add_argument("--no-output-video", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -26,6 +27,7 @@ def main() -> int:
             confirm_frames=args.confirm_frames,
             process_width=args.process_width,
             frame_stride=args.frame_stride,
+            save_output_video=not args.no_output_video,
         ).run()
     except Exception as exc:
         print(f"Video processing failed: {exc}")

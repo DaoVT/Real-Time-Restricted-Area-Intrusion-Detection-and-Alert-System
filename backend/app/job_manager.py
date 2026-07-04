@@ -121,6 +121,7 @@ class JobManager:
                 stop_event=self._jobs[job_id].stop_event,
                 process_width=payload.process_width,
                 frame_stride=payload.frame_stride,
+                save_output_video=payload.save_output_video,
             )
             result = processor.run()
             status = JobStatus.STOPPED if result.get("stopped") else JobStatus.COMPLETED
