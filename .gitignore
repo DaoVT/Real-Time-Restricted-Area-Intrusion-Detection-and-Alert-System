@@ -10,6 +10,7 @@ dist-electron/
 
 backend/data/
 backend/output/
+sample-videos/
 *.log
 *.err
 *.pid

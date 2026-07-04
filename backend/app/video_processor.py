@@ -235,7 +235,7 @@ def encode_preview_frame(frame: np.ndarray) -> bytes:
 
 
 def load_zone_file(path: Path) -> list[dict]:
-    with Path(path).open("r", encoding="utf-8") as file:
+    with Path(path).open("r", encoding="utf-8-sig") as file:
         data = json.load(file)
     if isinstance(data, dict):
         data = data.get("points", data.get("zone_points"))

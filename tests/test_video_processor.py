@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 
-from backend.app.video_processor import Detection, IntrusionEventDetector, ZoneDetector, encode_preview_frame
+from backend.app.video_processor import Detection, IntrusionEventDetector, ZoneDetector, encode_preview_frame, load_zone_file
 
 
 def test_intrusion_requires_confirm_frames_and_deduplicates():
@@ -34,3 +36,10 @@ def test_preview_frame_is_binary_jpeg_and_resized():
     encoded = encode_preview_frame(frame)
     assert encoded.startswith(b"\xff\xd8")
     assert encoded.endswith(b"\xff\xd9")
+
+
+def test_load_zone_file_accepts_utf8_bom(tmp_path):
+    zone_path = tmp_path / "zone.json"
+    zone_path.write_text(json.dumps({"zone_points": [{"x": 0.1, "y": 0.2}, {"x": 0.8, "y": 0.2}, {"x": 0.4, "y": 0.9}]}), encoding="utf-8-sig")
+    points = load_zone_file(zone_path)
+    assert points[0] == {"x": 0.1, "y": 0.2}
