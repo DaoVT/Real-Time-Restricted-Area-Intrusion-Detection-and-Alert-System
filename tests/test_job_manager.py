@@ -39,6 +39,7 @@ def test_job_manager_stop_is_thread_safe(monkeypatch, tmp_path):
         zone_points=[{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.1}, {"x": 0.5, "y": 0.9}],
     )
     job_id = manager.create_job(payload)
+    assert manager.get_job(job_id).status in {"PENDING", "RUNNING"}
     stopped = manager.stop_job(job_id)
     assert stopped.status == "STOPPED"
 
@@ -49,3 +50,11 @@ def test_job_manager_stop_is_thread_safe(monkeypatch, tmp_path):
             break
         time.sleep(0.02)
     assert manager.get_job(job_id).status == "STOPPED"
+
+
+def test_job_manager_adds_evidence_url_for_output_images(tmp_path):
+    manager = JobManager(tmp_path / "videos", tmp_path / "output")
+    job_id = uuid4()
+    evidence_path = tmp_path / "output" / str(job_id) / "evidence" / "frame.jpg"
+    event = manager._with_evidence_url(job_id, {"evidence_path": str(evidence_path)})
+    assert event["evidence_url"] == f"/outputs/{job_id}/evidence/frame.jpg"

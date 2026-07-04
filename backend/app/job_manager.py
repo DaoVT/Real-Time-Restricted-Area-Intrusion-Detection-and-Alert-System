@@ -38,7 +38,7 @@ class JobManager:
         snapshot = JobSnapshot(
             job_id=job_id,
             video_id=payload.video_id,
-            status=JobStatus.QUEUED,
+            status=JobStatus.PENDING,
             progress=0.0,
         )
         stop_event = threading.Event()
@@ -61,7 +61,7 @@ class JobManager:
             if not record:
                 return None
             record.stop_event.set()
-            if record.snapshot.status in {JobStatus.QUEUED, JobStatus.RUNNING}:
+            if record.snapshot.status in {JobStatus.PENDING, JobStatus.RUNNING}:
                 record.snapshot.status = JobStatus.STOPPED
             return record.snapshot.model_copy()
 
@@ -90,6 +90,7 @@ class JobManager:
 
         def on_progress(stats: dict) -> None:
             events = stats.pop("events", [])
+            events = [self._with_evidence_url(job_id, event) for event in events]
             snapshot = self._update(job_id, **stats, status=JobStatus.RUNNING)
             if snapshot:
                 self._emit(job_id, {"type": "progress", "data": {"progress": snapshot.progress}})
@@ -133,3 +134,15 @@ class JobManager:
         except Exception as exc:
             snapshot = self._update(job_id, status=JobStatus.FAILED, error=str(exc))
             self._emit(job_id, {"type": "error", "data": {"message": str(exc), "job": snapshot.model_dump(mode="json") if snapshot else None}})
+
+    def _with_evidence_url(self, job_id: UUID, event: dict) -> dict:
+        evidence_path = event.get("evidence_path")
+        if not evidence_path:
+            return event
+        try:
+            relative = Path(evidence_path).resolve().relative_to(self.output_dir.resolve())
+        except ValueError:
+            return event
+        enriched = dict(event)
+        enriched["evidence_url"] = f"/outputs/{relative.as_posix()}"
+        return enriched

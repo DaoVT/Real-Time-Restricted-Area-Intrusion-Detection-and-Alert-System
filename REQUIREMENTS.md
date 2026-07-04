@@ -10,7 +10,7 @@ Kết quả xử lý gồm video có overlay, CSV sự kiện và ảnh bằng c
 
 Hệ thống gồm bốn phần chính:
 
-- Electron: tạo cửa sổ desktop, load Vite dev server khi phát triển hoặc file build trong `dist` khi chạy production. Electron đang bật `contextIsolation=true` và `nodeIntegration=false`.
+- Electron: tạo cửa sổ desktop, spawn backend FastAPI khi app ready, dừng backend khi app quit, load Vite dev server khi phát triển hoặc file build trong `dist` khi chạy production. Electron đang bật `contextIsolation=true` và `nodeIntegration=false`.
 - React + Vite: giao diện chọn video, trích frame đầu, vẽ polygon vùng cấm, upload video, tạo job, nhận trạng thái qua WebSocket JSON và nhận preview frame JPEG binary qua WebSocket riêng.
 - FastAPI: cung cấp REST API, WebSocket trạng thái, WebSocket frame preview, quản lý upload video và quản lý processing job.
 - YOLO/OpenCV core: xử lý video độc lập trong `backend/app/video_processor.py`, dùng Ultralytics YOLO pretrained model, ByteTrack, OpenCV VideoCapture/VideoWriter, ghi evidence image, CSV và output video.
@@ -35,7 +35,7 @@ Các module backend chính:
 6. Backend kiểm tra extension và content type video hợp lệ, kiểm tra file không rỗng, lưu file vào `backend/data/videos/{video_id}.mp4`.
 7. Backend trả `video_id`.
 8. Frontend gọi `POST /api/jobs` với `video_id`, `confidence`, `confirm_frames`, `zone_points`.
-9. Backend tạo `job_id`, lưu snapshot trạng thái `QUEUED`, tạo `threading.Event` để stop job, chạy `VideoProcessor` trong background thread và trả `job_id` ngay với HTTP 202.
+9. Backend tạo `job_id`, lưu snapshot trạng thái `PENDING`, tạo `threading.Event` để stop job, chạy `VideoProcessor` trong background thread và trả `job_id` ngay với HTTP 202.
 10. Job chuyển sang `RUNNING`, xử lý từng frame, cập nhật progress/statistics, phát intrusion events và preview frames qua callback.
 11. `JobManager` phát message JSON qua `/ws/jobs/{job_id}` và frame JPEG binary qua `/ws/jobs/{job_id}/frames`.
 12. Frontend cập nhật progress, FPS, people count, inside count, intrusion count, thêm intrusion event mới lên đầu bảng và hiển thị preview frame realtime.
@@ -128,7 +128,7 @@ Response:
 {
   "job_id": "uuid",
   "video_id": "uuid",
-  "status": "QUEUED",
+  "status": "PENDING",
   "progress": 0.0,
   "fps": 0.0,
   "people_count": 0,
@@ -142,7 +142,7 @@ Response:
 
 `status` có thể là:
 
-- `QUEUED`
+- `PENDING`
 - `RUNNING`
 - `STOPPED`
 - `COMPLETED`
@@ -152,9 +152,31 @@ Lỗi:
 
 - `404 job not found`
 
+### `GET /api/jobs/{job_id}/result`
+
+Trả các đường dẫn kết quả hiện có của job.
+
+Response:
+
+```json
+{
+  "job_id": "uuid",
+  "status": "COMPLETED",
+  "output_video": "backend/output/{job_id}/result.mp4",
+  "events_csv": "backend/output/{job_id}/events.csv",
+  "evidence_images": [
+    "backend/output/{job_id}/evidence/{uuid}.jpg"
+  ]
+}
+```
+
+Lỗi:
+
+- `404 job not found`
+
 ### `POST /api/jobs/{job_id}/stop`
 
-Đặt stop event cho job. Nếu job đang `QUEUED` hoặc `RUNNING`, trạng thái snapshot chuyển sang `STOPPED`.
+Đặt stop event cho job. Nếu job đang `PENDING` hoặc `RUNNING`, trạng thái snapshot chuyển sang `STOPPED`.
 
 Response: `JobSnapshot`
 
@@ -211,7 +233,8 @@ Các message hiện có:
     "frame": 7,
     "track_id": 3,
     "confidence": 0.91,
-    "evidence_path": "backend/output/{job_id}/evidence/{uuid}.jpg"
+    "evidence_path": "backend/output/{job_id}/evidence/{uuid}.jpg",
+    "evidence_url": "/outputs/{job_id}/evidence/{uuid}.jpg"
   }
 }
 ```
@@ -307,6 +330,8 @@ Per-job output:
 - `backend/output/{job_id}/result.mp4`: video có overlay bounding boxes, midpoint và polygon vùng cấm.
 - `backend/output/{job_id}/events.csv`: CSV sự kiện với columns `frame`, `track_id`, `confidence`, `evidence_path`.
 - `backend/output/{job_id}/evidence/{uuid}.jpg`: ảnh bằng chứng khi có intrusion event.
+
+Output files are served by FastAPI under `/outputs`.
 
 CLI output mặc định:
 

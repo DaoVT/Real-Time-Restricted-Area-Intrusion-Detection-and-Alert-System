@@ -44,6 +44,36 @@ def test_health():
         assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_result_endpoint_returns_paths(monkeypatch, tmp_path):
+    install_test_manager(monkeypatch, tmp_path)
+    monkeypatch.setattr("backend.app.job_manager.VideoProcessor", DummyProcessor)
+
+    with TestClient(app_module.app) as client:
+        upload = client.post("/api/videos", files={"file": ("sample.mp4", b"\x00\x00\x00\x18ftypmp42", "video/mp4")})
+        video_id = upload.json()["video_id"]
+        created = client.post(
+            "/api/jobs",
+            json={
+                "video_id": video_id,
+                "confidence": 0.4,
+                "confirm_frames": 2,
+                "zone_points": [{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.1}, {"x": 0.5, "y": 0.9}],
+            },
+        )
+        job_id = created.json()["job_id"]
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            snapshot = client.get(f"/api/jobs/{job_id}").json()
+            if snapshot["status"] == "COMPLETED":
+                break
+            time.sleep(0.02)
+
+        result = client.get(f"/api/jobs/{job_id}/result")
+        assert result.status_code == 200
+        assert result.json()["output_video"] == "result.mp4"
+        assert result.json()["events_csv"] == "events.csv"
+
+
 def test_upload_video_validation(monkeypatch, tmp_path):
     install_test_manager(monkeypatch, tmp_path)
     with TestClient(app_module.app) as client:

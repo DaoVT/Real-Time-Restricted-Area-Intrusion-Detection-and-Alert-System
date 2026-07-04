@@ -55,6 +55,7 @@
 - Luôn giữ `nodeIntegration=false`.
 - Không expose API Node trực tiếp ra renderer.
 - Nếu cần thêm API qua preload, expose qua `contextBridge` với surface nhỏ và rõ ràng.
+- Nếu Electron spawn backend process, phải dừng process đó khi app quit.
 
 ## YOLO và xử lý video
 

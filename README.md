@@ -29,5 +29,11 @@ npm run build
 Run the standalone processor:
 
 ```powershell
+python -m app.cli --input sample.mp4 --zone zone.json
+```
+
+The backend implementation is also available directly:
+
+```powershell
 python -m backend.app.cli --input sample.mp4 --zone zone.json
 ```

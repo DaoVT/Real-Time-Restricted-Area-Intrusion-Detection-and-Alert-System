@@ -217,6 +217,15 @@ th {
   text-align: center;
 }
 
+.evidence-thumb {
+  background: #111827;
+  border-radius: 4px;
+  display: block;
+  height: 54px;
+  object-fit: cover;
+  width: 86px;
+}
+
 @media (max-width: 960px) {
   .workspace {
     grid-template-columns: 1fr;

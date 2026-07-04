@@ -7,10 +7,11 @@ from uuid import UUID, uuid4
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .frame_manager import FrameConnectionManager
 from .job_manager import JobManager
-from .schemas import JobCreate, JobCreateResponse, JobSnapshot, VideoUploadResponse
+from .schemas import JobCreate, JobCreateResponse, JobResultResponse, JobSnapshot, VideoUploadResponse
 from .websocket_manager import ConnectionManager
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -38,6 +39,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.mount("/outputs", StaticFiles(directory=OUTPUT_DIR), name="outputs")
 
 connections = ConnectionManager()
 frame_connections = FrameConnectionManager()
@@ -93,6 +95,22 @@ async def get_job(job_id: UUID) -> JobSnapshot:
     if not snapshot:
         raise HTTPException(status_code=404, detail="job not found")
     return snapshot
+
+
+@app.get("/api/jobs/{job_id}/result", response_model=JobResultResponse)
+async def get_job_result(job_id: UUID) -> JobResultResponse:
+    snapshot = jobs.get_job(job_id)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="job not found")
+    job_output_dir = jobs.output_dir / str(job_id)
+    evidence_images = sorted(str(path) for path in (job_output_dir / "evidence").glob("*.jpg"))
+    return JobResultResponse(
+        job_id=job_id,
+        status=snapshot.status,
+        output_video=snapshot.output_video,
+        events_csv=snapshot.events_csv,
+        evidence_images=evidence_images,
+    )
 
 
 @app.post("/api/jobs/{job_id}/stop", response_model=JobSnapshot)

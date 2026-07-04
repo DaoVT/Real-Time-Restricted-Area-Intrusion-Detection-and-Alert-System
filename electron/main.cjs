@@ -1,7 +1,25 @@
 const { app, BrowserWindow } = require('electron');
+const { spawn } = require('node:child_process');
 const path = require('node:path');
 
 const isDev = process.env.VITE_DEV_SERVER_URL;
+let backendProcess = null;
+
+function startBackend() {
+  if (process.env.DISABLE_ELECTRON_BACKEND === '1') return;
+  backendProcess = spawn('python', ['-m', 'uvicorn', 'backend.app.main:app', '--host', '127.0.0.1', '--port', '8000'], {
+    cwd: path.join(__dirname, '..'),
+    windowsHide: true,
+    stdio: 'ignore'
+  });
+}
+
+function stopBackend() {
+  if (backendProcess && !backendProcess.killed) {
+    backendProcess.kill();
+  }
+  backendProcess = null;
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -24,6 +42,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  startBackend();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -33,3 +52,5 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+app.on('before-quit', stopBackend);

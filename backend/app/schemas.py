@@ -31,7 +31,7 @@ class JobCreate(BaseModel):
 
 
 class JobStatus(str, Enum):
-    QUEUED = "QUEUED"
+    PENDING = "PENDING"
     RUNNING = "RUNNING"
     STOPPED = "STOPPED"
     COMPLETED = "COMPLETED"
@@ -58,6 +58,14 @@ class VideoUploadResponse(BaseModel):
 
 class JobCreateResponse(BaseModel):
     job_id: UUID
+
+
+class JobResultResponse(BaseModel):
+    job_id: UUID
+    status: JobStatus
+    output_video: str | None = None
+    events_csv: str | None = None
+    evidence_images: list[str] = Field(default_factory=list)
 
 
 class WsMessage(BaseModel):

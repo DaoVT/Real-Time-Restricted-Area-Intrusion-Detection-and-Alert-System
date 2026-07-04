@@ -6,6 +6,12 @@ import './styles.css';
 const API_BASE = 'http://127.0.0.1:8000';
 const WS_BASE = 'ws://127.0.0.1:8000';
 
+function toApiUrl(path) {
+  if (!path) return '';
+  if (path.startsWith('http')) return path;
+  return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 function VideoPanel({ file, previewUrl, liveFrameUrl, points, onAddPoint, onClearPoints }) {
   const imageRef = useRef(null);
   const canvasRef = useRef(null);
@@ -148,7 +154,15 @@ function EventTable({ events }) {
               <td>{event.frame}</td>
               <td>{event.track_id}</td>
               <td>{Number(event.confidence || 0).toFixed(2)}</td>
-              <td>{event.evidence_path ? <span title={event.evidence_path}>saved</span> : '-'}</td>
+              <td>
+                {event.evidence_url ? (
+                  <img className="evidence-thumb" src={toApiUrl(event.evidence_url)} alt={`Evidence frame ${event.frame}`} title={event.evidence_path} />
+                ) : event.evidence_path ? (
+                  <span title={event.evidence_path}>saved</span>
+                ) : (
+                  '-'
+                )}
+              </td>
             </tr>
           ))}
           {events.length === 0 && (
@@ -304,7 +318,7 @@ function App() {
       if (!jobResponse.ok) throw new Error(await jobResponse.text());
       const created = await jobResponse.json();
       setJobId(created.job_id);
-      setStatus('QUEUED');
+      setStatus('PENDING');
       connectJobSockets(created.job_id);
     } catch (error) {
       setStatus(`ERROR: ${error.message}`);
