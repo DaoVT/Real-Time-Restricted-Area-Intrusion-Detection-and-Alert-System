@@ -80,7 +80,7 @@ function VideoPanel({ file, previewUrl, liveFrameUrl, points, onAddPoint, onClea
   );
 }
 
-function ControlPanel({ onFileChange, onStart, onStop, onReset, disabled, status, backendStatus, pointsCount }) {
+function ControlPanel({ onFileChange, onStart, onStop, onReset, disabled, status, backendStatus, pointsCount, fastMode, onFastModeChange }) {
   return (
     <section className="control-panel">
       <h2>Controls</h2>
@@ -100,6 +100,10 @@ function ControlPanel({ onFileChange, onStart, onStop, onReset, disabled, status
           <RotateCcw size={16} /> Reset
         </button>
       </div>
+      <label className="toggle-row">
+        <input type="checkbox" checked={fastMode} onChange={(event) => onFastModeChange(event.target.checked)} />
+        <span>Fast mode</span>
+      </label>
       <div className="status-strip">
         <span>Backend</span>
         <strong className={backendStatus === 'connected' ? 'good' : 'bad'}>{backendStatus}</strong>
@@ -209,6 +213,7 @@ function App() {
   const [events, setEvents] = useState([]);
   const [stats, setStats] = useState({ progress: 0, fps: 0, people_count: 0, inside_count: 0, intrusion_count: 0 });
   const [busy, setBusy] = useState(false);
+  const [fastMode, setFastMode] = useState(true);
   const backendStatus = useBackendHealth();
   const socketsRef = useRef([]);
   const frameUrlRef = useRef('');
@@ -277,8 +282,14 @@ function App() {
       socketsRef.current.push(socket);
       socket.onmessage = (event) => {
         const message = JSON.parse(event.data);
-        if (message.type === 'progress') setStats((current) => ({ ...current, progress: message.data.progress ?? current.progress }));
-        if (message.type === 'statistics') setStats((current) => ({ ...current, ...message.data }));
+        if (message.type === 'progress') {
+          setStatus('RUNNING');
+          setStats((current) => ({ ...current, progress: message.data.progress ?? current.progress }));
+        }
+        if (message.type === 'statistics') {
+          setStatus('RUNNING');
+          setStats((current) => ({ ...current, ...message.data }));
+        }
         if (message.type === 'intrusion') setEvents((current) => [message.data, ...current]);
         if (message.type === 'completed') setStatus(message.data.status || 'COMPLETED');
         if (message.type === 'error') setStatus('FAILED');
@@ -313,7 +324,14 @@ function App() {
       const jobResponse = await fetch(`${API_BASE}/api/jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_id, confidence: 0.35, confirm_frames: 5, zone_points: points })
+        body: JSON.stringify({
+          video_id,
+          confidence: 0.35,
+          confirm_frames: 5,
+          process_width: fastMode ? 640 : null,
+          frame_stride: fastMode ? 3 : 1,
+          zone_points: points
+        })
       });
       if (!jobResponse.ok) throw new Error(await jobResponse.text());
       const created = await jobResponse.json();
@@ -371,6 +389,8 @@ function App() {
             status={status}
             backendStatus={backendStatus}
             pointsCount={points.length}
+            fastMode={fastMode}
+            onFastModeChange={setFastMode}
           />
           <StatisticsPanel stats={stats} />
         </aside>

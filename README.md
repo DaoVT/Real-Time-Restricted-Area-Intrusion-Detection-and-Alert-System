@@ -32,6 +32,12 @@ Run the standalone processor:
 python -m app.cli --input sample.mp4 --zone zone.json
 ```
 
+Fast mode for quicker CPU demos:
+
+```powershell
+python -m app.cli --input sample.mp4 --zone zone.json --process-width 640 --frame-stride 3
+```
+
 The backend implementation is also available directly:
 
 ```powershell

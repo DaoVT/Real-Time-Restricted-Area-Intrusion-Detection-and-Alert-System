@@ -4,7 +4,15 @@ import json
 
 import numpy as np
 
-from backend.app.video_processor import Detection, IntrusionEventDetector, ZoneDetector, encode_preview_frame, load_zone_file
+from backend.app.video_processor import (
+    Detection,
+    IntrusionEventDetector,
+    ZoneDetector,
+    encode_preview_frame,
+    load_zone_file,
+    prepare_detection_frame,
+    scale_detections,
+)
 
 
 def test_intrusion_requires_confirm_frames_and_deduplicates():
@@ -43,3 +51,14 @@ def test_load_zone_file_accepts_utf8_bom(tmp_path):
     zone_path.write_text(json.dumps({"zone_points": [{"x": 0.1, "y": 0.2}, {"x": 0.8, "y": 0.2}, {"x": 0.4, "y": 0.9}]}), encoding="utf-8-sig")
     points = load_zone_file(zone_path)
     assert points[0] == {"x": 0.1, "y": 0.2}
+
+
+def test_prepare_detection_frame_and_scale_detections():
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    resized, scale_x, scale_y = prepare_detection_frame(frame, 640)
+    assert resized.shape[:2] == (360, 640)
+    assert scale_x == 3.0
+    assert scale_y == 3.0
+
+    [detection] = scale_detections([Detection(track_id=1, bbox=(10, 20, 30, 40), confidence=0.9)], scale_x, scale_y)
+    assert detection.bbox == (30, 60, 90, 120)

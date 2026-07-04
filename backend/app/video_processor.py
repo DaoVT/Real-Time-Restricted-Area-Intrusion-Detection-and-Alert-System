@@ -60,6 +60,22 @@ class PersonDetector:
         return detections
 
 
+def scale_detections(detections: list[Detection], scale_x: float, scale_y: float) -> list[Detection]:
+    if scale_x == 1.0 and scale_y == 1.0:
+        return detections
+    scaled: list[Detection] = []
+    for detection in detections:
+        x1, y1, x2, y2 = detection.bbox
+        scaled.append(
+            Detection(
+                track_id=detection.track_id,
+                bbox=(x1 * scale_x, y1 * scale_y, x2 * scale_x, y2 * scale_y),
+                confidence=detection.confidence,
+            )
+        )
+    return scaled
+
+
 class ZoneDetector:
     def __init__(self, normalized_points: Iterable[Point | dict], width: int, height: int) -> None:
         self.points = np.array(
@@ -121,6 +137,8 @@ class VideoProcessor:
         frame_callback: FrameCallback | None = None,
         stop_event: Event | None = None,
         detector: PersonDetector | None = None,
+        process_width: int | None = None,
+        frame_stride: int = 1,
     ) -> None:
         self.input_path = Path(input_path)
         self.output_dir = Path(output_dir)
@@ -131,6 +149,8 @@ class VideoProcessor:
         self.frame_callback = frame_callback
         self.stop_event = stop_event or Event()
         self.detector = detector
+        self.process_width = process_width
+        self.frame_stride = max(frame_stride, 1)
 
     def run(self) -> dict:
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -148,10 +168,11 @@ class VideoProcessor:
             height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
             total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
             source_fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
+            output_fps = max(source_fps / self.frame_stride, 1.0)
             writer = cv2.VideoWriter(
                 str(output_video),
                 cv2.VideoWriter_fourcc(*"mp4v"),
-                source_fps,
+                output_fps,
                 (width, height),
             )
             if not writer.isOpened():
@@ -162,7 +183,8 @@ class VideoProcessor:
             intrusion_detector = IntrusionEventDetector(self.confirm_frames)
             intrusion_count = 0
             frame_index = 0
-            preview_interval = max(1, int(source_fps / 10))
+            processed_frame_count = 0
+            preview_interval = max(1, int(output_fps / 10))
             started_at = time.perf_counter()
 
             with events_csv.open("w", newline="", encoding="utf-8") as csv_file:
@@ -173,7 +195,9 @@ class VideoProcessor:
                     if not ok:
                         break
                     frame_index += 1
-                    detections = detector.track(frame)
+                    processed_frame_count += 1
+                    detect_frame, scale_x, scale_y = prepare_detection_frame(frame, self.process_width)
+                    detections = scale_detections(detector.track(detect_frame), scale_x, scale_y)
                     intrusions, inside_count = intrusion_detector.update(detections, zone)
 
                     for detection in detections:
@@ -208,8 +232,14 @@ class VideoProcessor:
                     }
                     if self.progress_callback:
                         self.progress_callback(stats)
-                    if self.frame_callback and frame_index % preview_interval == 0:
+                    if self.frame_callback and processed_frame_count % preview_interval == 0:
                         self.frame_callback(encode_preview_frame(frame))
+                    for _ in range(self.frame_stride - 1):
+                        if self.stop_event.is_set():
+                            break
+                        if not capture.grab():
+                            break
+                        frame_index += 1
 
             return {
                 "stopped": self.stop_event.is_set(),
@@ -232,6 +262,19 @@ def encode_preview_frame(frame: np.ndarray) -> bytes:
     if not ok:
         raise RuntimeError("failed to encode preview frame")
     return encoded.tobytes()
+
+
+def prepare_detection_frame(frame: np.ndarray, process_width: int | None) -> tuple[np.ndarray, float, float]:
+    if process_width is None:
+        return frame, 1.0, 1.0
+    height, width = frame.shape[:2]
+    if width <= process_width:
+        return frame, 1.0, 1.0
+    scale = process_width / width
+    resized_width = process_width
+    resized_height = max(1, int(height * scale))
+    resized = cv2.resize(frame, (resized_width, resized_height))
+    return resized, width / resized_width, height / resized_height
 
 
 def load_zone_file(path: Path) -> list[dict]:

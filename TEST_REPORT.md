@@ -48,6 +48,18 @@ Result:
 {'stopped': False, 'output_video': 'backend\\output\\e2e-rerun\\result.mp4', 'events_csv': 'backend\\output\\e2e-rerun\\events.csv', 'intrusion_count': 9}
 ```
 
+Fast Mode CLI E2E:
+
+```powershell
+python -m app.cli --input ..\sample-videos\sample.mp4 --zone ..\sample-videos\zone.json --output backend\output\e2e-fast2 --process-width 640 --frame-stride 3
+```
+
+Result:
+
+```text
+{'stopped': False, 'output_video': 'backend\\output\\e2e-fast2\\result.mp4', 'events_csv': 'backend\\output\\e2e-fast2\\events.csv', 'intrusion_count': 6}
+```
+
 Output inspection:
 
 ```powershell
@@ -68,6 +80,7 @@ npm run build
 - Added a regression test for BOM encoded zone files.
 - Added `lap>=0.5.12` to `requirements.txt` because Ultralytics ByteTrack requires it.
 - Added `sample-videos/` to `.gitignore` so local test videos are not committed.
+- Added Fast Mode with `process_width` and `frame_stride` for faster CPU demos.
 
 ## Files Changed
 
@@ -76,6 +89,13 @@ npm run build
 - `backend/app/video_processor.py`
 - `requirements.txt`
 - `tests/test_video_processor.py`
+- `backend/app/cli.py`
+- `backend/app/job_manager.py`
+- `backend/app/schemas.py`
+- `frontend/src/main.jsx`
+- `frontend/src/styles.css`
+- `README.md`
+- `REQUIREMENTS.md`
 
 ## Automated Check Results
 
@@ -168,6 +188,33 @@ evidence_count 9
 first_evidence_decodable True
 first_evidence_shape (1080, 1920, 3)
 ```
+
+## Fast Mode E2E Output
+
+Output folder:
+
+```text
+backend\output\e2e-fast2
+```
+
+Fast Mode settings:
+
+```text
+process_width 640
+frame_stride 3
+```
+
+Output inspection:
+
+```text
+video_opened True
+frames 1516
+fps 19.98
+csv_rows 6
+evidence_count 6
+```
+
+Fast Mode processed fewer frames and produced fewer intrusion events than accurate mode. This is expected: it trades some temporal precision for faster CPU processing.
 
 ## Real E2E Checklist
 

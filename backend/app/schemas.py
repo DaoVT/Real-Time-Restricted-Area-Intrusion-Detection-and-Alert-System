@@ -16,6 +16,8 @@ class JobCreate(BaseModel):
     video_id: UUID
     confidence: float = Field(default=0.35, ge=0.01, le=1.0)
     confirm_frames: int = Field(default=5, ge=1, le=300)
+    process_width: int | None = Field(default=None, ge=320, le=1920)
+    frame_stride: int = Field(default=1, ge=1, le=30)
     zone_points: list[Point] = Field(min_length=3)
 
     @field_validator("zone_points")

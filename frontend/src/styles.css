@@ -156,6 +156,20 @@ aside {
   padding-top: 10px;
 }
 
+.toggle-row {
+  align-items: center;
+  border-top: 1px solid #e5ebf0;
+  display: flex;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.toggle-row input {
+  accent-color: #1f7a5c;
+  height: 16px;
+  width: 16px;
+}
+
 .good {
   color: #15803d;
 }

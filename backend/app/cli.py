@@ -13,6 +13,8 @@ def main() -> int:
     parser.add_argument("--output", default=Path("backend/output/cli"), type=Path)
     parser.add_argument("--confidence", default=0.35, type=float)
     parser.add_argument("--confirm-frames", default=5, type=int)
+    parser.add_argument("--process-width", default=None, type=int)
+    parser.add_argument("--frame-stride", default=1, type=int)
     args = parser.parse_args()
 
     try:
@@ -22,6 +24,8 @@ def main() -> int:
             zone_points=load_zone_file(args.zone),
             confidence=args.confidence,
             confirm_frames=args.confirm_frames,
+            process_width=args.process_width,
+            frame_stride=args.frame_stride,
         ).run()
     except Exception as exc:
         print(f"Video processing failed: {exc}")

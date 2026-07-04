@@ -96,6 +96,8 @@ def test_create_get_and_stop_job(monkeypatch, tmp_path):
             "video_id": video_id,
             "confidence": 0.4,
             "confirm_frames": 2,
+            "process_width": 640,
+            "frame_stride": 3,
             "zone_points": [{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.1}, {"x": 0.5, "y": 0.9}],
         }
         created = client.post("/api/jobs", json=payload)

@@ -119,6 +119,8 @@ class JobManager:
                 progress_callback=on_progress,
                 frame_callback=lambda frame: self._emit_frame(job_id, frame),
                 stop_event=self._jobs[job_id].stop_event,
+                process_width=payload.process_width,
+                frame_stride=payload.frame_stride,
             )
             result = processor.run()
             status = JobStatus.STOPPED if result.get("stopped") else JobStatus.COMPLETED

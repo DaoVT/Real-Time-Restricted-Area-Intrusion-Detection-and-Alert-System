@@ -90,6 +90,8 @@ Request:
   "video_id": "uuid",
   "confidence": 0.35,
   "confirm_frames": 5,
+  "process_width": 640,
+  "frame_stride": 3,
   "zone_points": [
     { "x": 0.1, "y": 0.1 },
     { "x": 0.9, "y": 0.1 },
@@ -102,6 +104,8 @@ Validation:
 
 - `confidence`: `0.01` đến `1.0`
 - `confirm_frames`: `1` đến `300`
+- `process_width`: optional width used for YOLO detection resize, `320` đến `1920`
+- `frame_stride`: process every Nth frame, `1` đến `30`
 - `zone_points`: tối thiểu 3 điểm
 - Mỗi điểm normalized có `x`, `y` trong `0.0` đến `1.0`
 - Polygon phải có diện tích khác 0
@@ -304,6 +308,7 @@ Frame preview rules:
 - Tracking uses `tracker="bytetrack.yaml"`.
 - Only class `0` is processed, corresponding to `person` in COCO models.
 - Each detection keeps `track_id`, `bbox` and `confidence`.
+- Fast Mode can resize detection frames with `process_width` and skip detection frames with `frame_stride`; detections are scaled back to original frame coordinates before zone checks and drawing.
 
 ## Logic chống cảnh báo lặp
 
@@ -352,6 +357,8 @@ Options:
 - `--output`: thư mục output, mặc định `backend/output/cli`.
 - `--confidence`: confidence threshold, mặc định `0.35`.
 - `--confirm-frames`: số frame xác nhận, mặc định `5`.
+- `--process-width`: optional resize width for faster detection, ví dụ `640`.
+- `--frame-stride`: process every Nth frame, ví dụ `3`.
 
 ## Phạm vi không thực hiện hiện tại
 
