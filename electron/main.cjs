@@ -7,6 +7,7 @@ let backendProcess = null;
 
 function startBackend() {
   if (process.env.DISABLE_ELECTRON_BACKEND === '1') return;
+  // Electron quản lý backend dev/local để người dùng mở app là có API chạy kèm.
   backendProcess = spawn('python', ['-m', 'uvicorn', 'backend.app.main:app', '--host', '127.0.0.1', '--port', '8000'], {
     cwd: path.join(__dirname, '..'),
     windowsHide: true,
@@ -29,6 +30,7 @@ function createWindow() {
     minHeight: 680,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
+      // Không cấp quyền Node trực tiếp cho renderer; API nhỏ được expose qua preload.
       contextIsolation: true,
       nodeIntegration: false
     }

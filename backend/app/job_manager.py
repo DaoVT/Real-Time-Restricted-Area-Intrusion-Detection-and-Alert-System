@@ -23,6 +23,7 @@ class JobManager:
         self.output_dir = Path(output_dir)
         self.loop = loop
         self._jobs: dict[UUID, JobRecord] = {}
+        # Job được đọc/ghi từ request thread và worker thread, nên mọi snapshot đi qua lock.
         self._lock = threading.RLock()
         self.status_callback = None
         self.frame_callback = None
@@ -45,6 +46,7 @@ class JobManager:
         record = JobRecord(snapshot=snapshot, stop_event=stop_event)
         with self._lock:
             self._jobs[job_id] = record
+        # HTTP endpoint trả job_id ngay, còn xử lý video chạy trong background thread.
         thread = threading.Thread(target=self._run_job, args=(job_id, payload, video_path), daemon=True)
         record.thread = thread
         thread.start()
@@ -76,10 +78,12 @@ class JobManager:
             return record.snapshot.model_copy()
 
     def _emit(self, job_id: UUID, message: dict) -> None:
+        # Worker thread không await trực tiếp được, nên đẩy coroutine về event loop FastAPI.
         if self.status_callback and self.loop and self.loop.is_running():
             asyncio.run_coroutine_threadsafe(self.status_callback(job_id, message), self.loop)
 
     def _emit_frame(self, job_id: UUID, frame: bytes) -> None:
+        # Preview frame cũng đi qua event loop để lỗi WebSocket không làm dừng job xử lý.
         if self.frame_callback and self.loop and self.loop.is_running():
             asyncio.run_coroutine_threadsafe(self.frame_callback(job_id, frame), self.loop)
 
@@ -90,6 +94,7 @@ class JobManager:
 
         def on_progress(stats: dict) -> None:
             events = stats.pop("events", [])
+            # Chuyển evidence path nội bộ thành URL static để frontend hiển thị ảnh cảnh báo.
             events = [self._with_evidence_url(job_id, event) for event in events]
             snapshot = self._update(job_id, **stats, status=JobStatus.RUNNING)
             if snapshot:

@@ -34,6 +34,7 @@ class ConnectionManager:
             try:
                 await websocket.send_json(message)
             except Exception:
+                # Một client lỗi/ngắt kết nối không được làm ảnh hưởng job hoặc client khác.
                 stale.append(websocket)
         for websocket in stale:
             await self.disconnect(job_id, websocket)

@@ -27,6 +27,7 @@ class Detection:
 
     @property
     def bottom_midpoint(self) -> tuple[float, float]:
+        # Lấy điểm giữa cạnh dưới của khung người, tạm coi đó là vị trí chân.
         x1, _, x2, y2 = self.bbox
         return ((x1 + x2) / 2.0, y2)
 
@@ -42,6 +43,7 @@ class PersonDetector:
         self.device = select_yolo_device()
 
     def track(self, frame: np.ndarray) -> list[Detection]:
+        # YOLO tìm người trong frame, ByteTrack gán ID để biết người này qua nhiều frame.
         results = self.model.track(
             frame,
             persist=True,
@@ -63,6 +65,7 @@ class PersonDetector:
 
 
 def scale_detections(detections: list[Detection], scale_x: float, scale_y: float) -> list[Detection]:
+    # Nếu đã thu nhỏ ảnh để chạy nhanh hơn, cần đổi khung người về kích thước video gốc.
     if scale_x == 1.0 and scale_y == 1.0:
         return detections
     scaled: list[Detection] = []
@@ -80,6 +83,7 @@ def scale_detections(detections: list[Detection], scale_x: float, scale_y: float
 
 class ZoneDetector:
     def __init__(self, normalized_points: Iterable[Point | dict], width: int, height: int) -> None:
+        # UI gửi điểm từ 0 đến 1, backend nhân với kích thước video để ra tọa độ pixel.
         self.points = np.array(
             [
                 (
@@ -107,6 +111,7 @@ class IntrusionEventDetector:
     def update(self, detections: list[Detection], zone: ZoneDetector) -> tuple[list[Detection], int]:
         active_tracks = {detection.track_id for detection in detections}
         for track_id in list(self._inside_counts):
+            # Nếu không còn thấy người này nữa thì xóa bộ đếm của người đó.
             if track_id not in active_tracks:
                 self._inside_counts.pop(track_id, None)
                 self._alerted_tracks.discard(track_id)
@@ -118,6 +123,7 @@ class IntrusionEventDetector:
                 inside_count += 1
                 count = self._inside_counts.get(detection.track_id, 0) + 1
                 self._inside_counts[detection.track_id] = count
+                # Chỉ báo động khi người đó đứng trong vùng đủ nhiều frame liên tiếp.
                 if count >= self.confirm_frames and detection.track_id not in self._alerted_tracks:
                     self._alerted_tracks.add(detection.track_id)
                     new_intrusions.append(detection)
@@ -157,23 +163,28 @@ class VideoProcessor:
         self.save_output_video = save_output_video
 
     def run(self) -> dict:
+        # Đây là luồng chính: mở video, đọc từng frame, phát hiện người và ghi kết quả.
+        # Mỗi job có một thư mục output riêng để lưu CSV, ảnh bằng chứng và video kết quả.
         self.output_dir.mkdir(parents=True, exist_ok=True)
         evidence_dir = self.output_dir / "evidence"
         evidence_dir.mkdir(exist_ok=True)
         events_csv = self.output_dir / "events.csv"
         output_video = self.output_dir / "result.mp4"
 
+        # OpenCV mở file video đầu vào. Sau đó vòng lặp bên dưới sẽ đọc lần lượt từng frame.
         capture = cv2.VideoCapture(str(self.input_path))
         if not capture.isOpened():
             raise RuntimeError(f"cannot open video: {self.input_path}")
         writer = None
         try:
+            # Lấy thông tin cơ bản của video để tính tiến độ, FPS và tạo video output đúng kích thước.
             width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
             total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
             source_fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
             output_fps = max(source_fps / self.frame_stride, 1.0)
             if self.save_output_video:
+                # VideoWriter dùng để ghi lại video đã vẽ khung người, điểm chân và vùng cấm.
                 writer = cv2.VideoWriter(
                     str(output_video),
                     cv2.VideoWriter_fourcc(*"mp4v"),
@@ -183,36 +194,47 @@ class VideoProcessor:
                 if not writer.isOpened():
                     raise RuntimeError("cannot create output video writer")
 
+            # detector tìm người; zone đổi vùng cấm từ tọa độ 0..1 sang pixel của video.
             detector = self.detector or PersonDetector(self.confidence)
             zone = ZoneDetector(self.zone_points, width, height)
+            # intrusion_detector nhớ trạng thái từng người để biết khi nào đủ điều kiện báo động.
             intrusion_detector = IntrusionEventDetector(self.confirm_frames)
             intrusion_count = 0
             frame_index = 0
             processed_frame_count = 0
+            # Chỉ gửi một phần frame lên UI để preview nhẹ hơn, tối đa khoảng 10 FPS.
             preview_interval = max(1, int(output_fps / 10))
             started_at = time.perf_counter()
 
             with events_csv.open("w", newline="", encoding="utf-8") as csv_file:
+                # CSV lưu danh sách các lần xâm nhập đã được xác nhận.
                 csv_writer = csv.DictWriter(csv_file, fieldnames=["frame", "track_id", "confidence", "evidence_path"])
                 csv_writer.writeheader()
                 while not self.stop_event.is_set():
+                    # Đọc frame tiếp theo. Nếu hết video thì thoát vòng lặp.
                     ok, frame = capture.read()
                     if not ok:
                         break
                     frame_index += 1
                     processed_frame_count += 1
+                    # Fast Mode có thể thu nhỏ frame trước khi đưa vào YOLO để tăng tốc.
                     detect_frame, scale_x, scale_y = prepare_detection_frame(frame, self.process_width)
+                    # YOLO + ByteTrack trả về danh sách người, gồm ID, khung người và độ tin cậy.
                     detections = scale_detections(detector.track(detect_frame), scale_x, scale_y)
+                    # Kiểm tra từng người có đứng trong vùng cấm đủ lâu để tạo cảnh báo không.
                     intrusions, inside_count = intrusion_detector.update(detections, zone)
 
+                    # Vẽ kết quả lên frame: khung người màu xanh và điểm chân màu đỏ.
                     for detection in detections:
                         x1, y1, x2, y2 = [int(v) for v in detection.bbox]
                         cv2.rectangle(frame, (x1, y1), (x2, y2), (35, 160, 35), 2)
                         cv2.circle(frame, tuple(int(v) for v in detection.bottom_midpoint), 4, (0, 0, 255), -1)
+                    # Vẽ polygon vùng cấm màu vàng/cam lên frame.
                     zone.draw(frame)
 
                     intrusion_events = []
                     for detection in intrusions:
+                        # Khi có cảnh báo mới, lưu ảnh bằng chứng và ghi một dòng vào CSV.
                         intrusion_count += 1
                         evidence_path = evidence_dir / f"{uuid4()}.jpg"
                         cv2.imwrite(str(evidence_path), frame)
@@ -226,8 +248,10 @@ class VideoProcessor:
                         intrusion_events.append(event)
 
                     if writer is not None:
+                        # Nếu bật lưu video output, ghi frame đã vẽ overlay vào result.mp4.
                         writer.write(frame)
                     elapsed = max(time.perf_counter() - started_at, 0.001)
+                    # Thống kê này được JobManager gửi lên frontend qua WebSocket.
                     stats = {
                         "progress": min(frame_index / total_frames, 1.0),
                         "fps": frame_index / elapsed,
@@ -239,8 +263,10 @@ class VideoProcessor:
                     if self.progress_callback:
                         self.progress_callback(stats)
                     if self.frame_callback and processed_frame_count % preview_interval == 0:
+                        # Gửi preview frame đã nén JPEG để UI hiển thị video realtime.
                         self.frame_callback(encode_preview_frame(frame))
                     for _ in range(self.frame_stride - 1):
+                        # Fast Mode bỏ qua một số frame để chạy nhanh hơn.
                         if self.stop_event.is_set():
                             break
                         if not capture.grab():
@@ -248,18 +274,21 @@ class VideoProcessor:
                         frame_index += 1
 
             return {
+                # Kết quả cuối cùng được JobManager lưu vào snapshot của job.
                 "stopped": self.stop_event.is_set(),
                 "output_video": str(output_video) if self.save_output_video else None,
                 "events_csv": str(events_csv),
                 "intrusion_count": intrusion_count,
             }
         finally:
+            # Luôn giải phóng file video, kể cả khi job lỗi hoặc bị stop giữa chừng.
             capture.release()
             if writer is not None:
                 writer.release()
 
 
 def encode_preview_frame(frame: np.ndarray) -> bytes:
+    # Nén frame thành ảnh JPEG nhỏ để gửi lên giao diện xem realtime.
     height, width = frame.shape[:2]
     scale = min(640 / width, 360 / height, 1.0)
     if scale < 1.0:
@@ -271,6 +300,7 @@ def encode_preview_frame(frame: np.ndarray) -> bytes:
 
 
 def prepare_detection_frame(frame: np.ndarray, process_width: int | None) -> tuple[np.ndarray, float, float]:
+    # Thu nhỏ frame trước khi đưa vào YOLO để tăng tốc, nếu người dùng bật Fast Mode.
     if process_width is None:
         return frame, 1.0, 1.0
     height, width = frame.shape[:2]
@@ -284,6 +314,7 @@ def prepare_detection_frame(frame: np.ndarray, process_width: int | None) -> tup
 
 
 def select_yolo_device() -> int | str:
+    # Có GPU thì dùng GPU cho nhanh, không có thì chạy bằng CPU.
     try:
         import torch
     except Exception:

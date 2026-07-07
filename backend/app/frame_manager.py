@@ -13,6 +13,7 @@ class FrameConnectionManager:
         self._lock = asyncio.Lock()
 
     async def connect(self, job_id: UUID) -> asyncio.Queue[bytes]:
+        # Queue size 1: client chậm sẽ nhận frame mới nhất thay vì kéo chậm pipeline xử lý.
         queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=1)
         async with self._lock:
             self._queues[job_id].add(queue)
@@ -33,6 +34,7 @@ class FrameConnectionManager:
         for queue in queues:
             if queue.full():
                 try:
+                    # Bỏ frame cũ để preview không bị trễ nhiều giây so với job thật.
                     queue.get_nowait()
                 except asyncio.QueueEmpty:
                     pass

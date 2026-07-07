@@ -221,6 +221,7 @@ function App() {
   const videoUrlRef = useRef('');
 
   const cleanupFrameUrl = () => {
+    // Frame preview đổi liên tục, phải revoke Blob URL cũ để tránh rò bộ nhớ.
     if (frameUrlRef.current) URL.revokeObjectURL(frameUrlRef.current);
     frameUrlRef.current = '';
   };
@@ -257,6 +258,7 @@ function App() {
     video.muted = true;
     video.src = url;
     video.onloadeddata = () => {
+      // Lấy một frame đầu tiên làm nền để người dùng vẽ polygon trước khi upload.
       video.currentTime = Math.min(0.1, video.duration || 0);
     };
     video.onseeked = () => {
@@ -278,6 +280,7 @@ function App() {
     closeSockets();
     let attempts = 0;
     const connectStatus = () => {
+      // Socket trạng thái dùng JSON message dạng { type, data }.
       const socket = new WebSocket(`${WS_BASE}/ws/jobs/${nextJobId}`);
       socketsRef.current.push(socket);
       socket.onmessage = (event) => {
@@ -296,11 +299,13 @@ function App() {
       };
       socket.onclose = () => {
         attempts += 1;
+        // Giới hạn reconnect để backend lỗi không tạo vòng retry vô hạn.
         if (attempts <= 3) window.setTimeout(connectStatus, attempts * 1000);
       };
     };
     connectStatus();
 
+    // Socket frame nhận binary JPEG Blob, không parse JSON và không dùng Base64.
     const frameSocket = new WebSocket(`${WS_BASE}/ws/jobs/${nextJobId}/frames`);
     frameSocket.binaryType = 'blob';
     frameSocket.onmessage = (event) => {
@@ -328,6 +333,7 @@ function App() {
           video_id,
           confidence: 0.35,
           confirm_frames: 5,
+          // Fast mode ưu tiên preview realtime: resize detect, skip frame và không ghi MP4 output.
           process_width: fastMode ? 640 : null,
           frame_stride: fastMode ? 3 : 1,
           save_output_video: !fastMode,

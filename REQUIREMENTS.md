@@ -101,18 +101,18 @@ Request:
 }
 ```
 
-Validation:
+Ràng buộc validate:
 
 - `confidence`: `0.01` đến `1.0`
 - `confirm_frames`: `1` đến `300`
-- `process_width`: optional width used for YOLO detection resize, `320` đến `1920`
-- `frame_stride`: process every Nth frame, `1` đến `30`
-- `save_output_video`: whether to write `result.mp4`; live preview can set this to `false`
+- `process_width`: chiều rộng tùy chọn dùng để resize khi YOLO detect, `320` đến `1920`
+- `frame_stride`: xử lý mỗi N frame, `1` đến `30`
+- `save_output_video`: có ghi `result.mp4` hay không; live preview có thể đặt giá trị này là `false`
 - `zone_points`: tối thiểu 3 điểm
 - Mỗi điểm normalized có `x`, `y` trong `0.0` đến `1.0`
 - Polygon phải có diện tích khác 0
 
-Response status: `202`
+HTTP response status: `202`
 
 ```json
 {
@@ -280,24 +280,24 @@ Các message hiện có:
 
 ### Frame WebSocket: `/ws/jobs/{job_id}/frames`
 
-Sends binary JPEG bytes, not Base64.
+Gửi binary JPEG bytes, không gửi Base64.
 
-Frame preview rules:
+Quy tắc preview frame:
 
-- Resize preview to maximum 640x360.
-- JPEG encode with OpenCV.
-- Send at most approximately 10 FPS based on source FPS.
-- Per-client queue size is 1.
-- If a client is slow, the old frame is dropped and replaced by the newest frame.
-- Processing continues even when no frame clients are connected.
+- Resize preview về tối đa 640x360.
+- Encode JPEG bằng OpenCV.
+- Gửi tối đa xấp xỉ 10 FPS dựa trên FPS của video nguồn.
+- Mỗi client có queue size bằng 1.
+- Nếu client chậm, frame cũ bị bỏ và được thay bằng frame mới nhất.
+- Job xử lý vẫn tiếp tục ngay cả khi không có client nhận frame.
 
 ## Logic vùng cấm
 
-- Frontend stores polygon points as normalized coordinates in `[0.0, 1.0]`.
-- Backend converts normalized points to pixel coordinates using the current video width and height.
-- `ZoneDetector.contains()` uses `cv2.pointPolygonTest`.
-- A point on the polygon boundary counts as inside.
-- The representative point for each detected person is the midpoint of the bottom edge of the bounding box:
+- Frontend lưu các điểm polygon bằng tọa độ normalized trong `[0.0, 1.0]`.
+- Backend chuyển tọa độ normalized sang tọa độ pixel theo chiều rộng và chiều cao hiện tại của video.
+- `ZoneDetector.contains()` dùng `cv2.pointPolygonTest`.
+- Điểm nằm trên biên polygon vẫn được tính là ở trong vùng.
+- Điểm đại diện cho mỗi người được phát hiện là midpoint của cạnh dưới bounding box:
 
 ```text
 ((x1 + x2) / 2, y2)
@@ -305,13 +305,13 @@ Frame preview rules:
 
 ## Logic phát hiện người
 
-- `PersonDetector` loads an Ultralytics YOLO pretrained model, default `yolov8n.pt`.
-- Detection/tracking uses `model.track(...)`.
-- Tracking uses `tracker="bytetrack.yaml"`.
-- Only class `0` is processed, corresponding to `person` in COCO models.
-- Each detection keeps `track_id`, `bbox` and `confidence`.
-- Fast Mode can resize detection frames with `process_width` and skip detection frames with `frame_stride`; detections are scaled back to original frame coordinates before zone checks and drawing.
-- YOLO device selection prefers GPU device `0` when PyTorch CUDA is available and falls back to CPU otherwise.
+- `PersonDetector` tải Ultralytics YOLO pretrained model, mặc định là `yolov8n.pt`.
+- Phát hiện/tracking dùng `model.track(...)`.
+- Tracking dùng `tracker="bytetrack.yaml"`.
+- Chỉ xử lý class `0`, tương ứng với `person` trong COCO models.
+- Mỗi detection giữ `track_id`, `bbox` và `confidence`.
+- Fast Mode có thể resize frame detect bằng `process_width` và bỏ qua frame bằng `frame_stride`; detection được scale ngược về tọa độ frame gốc trước khi kiểm tra vùng và vẽ overlay.
+- Chọn device YOLO ưu tiên GPU device `0` khi PyTorch CUDA khả dụng, nếu không thì fallback về CPU.
 
 ## Logic chống cảnh báo lặp
 
@@ -339,7 +339,7 @@ Per-job output:
 - `backend/output/{job_id}/events.csv`: CSV sự kiện với columns `frame`, `track_id`, `confidence`, `evidence_path`.
 - `backend/output/{job_id}/evidence/{uuid}.jpg`: ảnh bằng chứng khi có intrusion event.
 
-Output files are served by FastAPI under `/outputs`.
+Các file output được FastAPI phục vụ dưới route `/outputs`.
 
 CLI output mặc định:
 
@@ -353,16 +353,16 @@ Chạy processor độc lập:
 python -m backend.app.cli --input sample.mp4 --zone zone.json
 ```
 
-Options:
+Các option:
 
 - `--input`: đường dẫn video input.
 - `--zone`: file JSON chứa danh sách điểm normalized hoặc object có key `points`/`zone_points`.
 - `--output`: thư mục output, mặc định `backend/output/cli`.
 - `--confidence`: confidence threshold, mặc định `0.35`.
 - `--confirm-frames`: số frame xác nhận, mặc định `5`.
-- `--process-width`: optional resize width for faster detection, ví dụ `640`.
-- `--frame-stride`: process every Nth frame, ví dụ `3`.
-- `--no-output-video`: skip writing `result.mp4` for lighter live preview processing.
+- `--process-width`: chiều rộng resize tùy chọn để detect nhanh hơn, ví dụ `640`.
+- `--frame-stride`: xử lý mỗi N frame, ví dụ `3`.
+- `--no-output-video`: bỏ qua bước ghi `result.mp4` để live preview nhẹ hơn.
 
 ## Phạm vi không thực hiện hiện tại
 
