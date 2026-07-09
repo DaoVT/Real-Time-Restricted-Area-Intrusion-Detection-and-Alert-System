@@ -64,15 +64,18 @@ function VideoPanel({ file, previewUrl, liveFrameUrl, points, onAddPoint, onClea
     <section className="video-panel">
       <div className="panel-title">
         <h2>Video</h2>
-        <button type="button" className="icon-button" onClick={onClearPoints} title="Clear polygon">
+        {/* title="Clear polygon" -> title="Xóa vùng đa giác" */}
+        <button type="button" className="icon-button" onClick={onClearPoints} title="Xóa vùng đa giác">
           <RotateCcw size={18} />
         </button>
       </div>
       <div className="video-stage">
         {(liveFrameUrl || previewUrl) ? (
-          <img ref={imageRef} src={liveFrameUrl || previewUrl} alt={file?.name || 'Video preview'} />
+          /* alt={file?.name || 'Video preview'} -> alt={file?.name || 'Xem trước video'} */
+          <img ref={imageRef} src={liveFrameUrl || previewUrl} alt={file?.name || 'Xem trước video'} />
         ) : (
-          <div className="empty-stage">Select a video</div>
+          /* 'Select a video' -> 'Vui lòng chọn một video' */
+          <div className="empty-stage">Vui lòng chọn một video</div>
         )}
         <canvas ref={canvasRef} onClick={handleCanvasClick} />
       </div>
@@ -83,50 +86,76 @@ function VideoPanel({ file, previewUrl, liveFrameUrl, points, onAddPoint, onClea
 function ControlPanel({ onFileChange, onStart, onStop, onReset, disabled, status, backendStatus, pointsCount, fastMode, onFastModeChange }) {
   return (
     <section className="control-panel">
-      <h2>Controls</h2>
+      {/* <h2>Controls</h2> -> <h2>Bảng điều khiển</h2> */}
+      <h2>Bảng điều khiển</h2>
       <label className="file-picker">
         <Upload size={18} />
-        <span>Choose video</span>
+        {/* <span>Choose video</span> -> <span>Chọn video</span> */}
+        <span>Chọn video</span>
         <input type="file" accept="video/*" onChange={(event) => onFileChange(event.target.files?.[0] || null)} />
       </label>
       <div className="button-row">
         <button type="button" onClick={onStart} disabled={disabled || pointsCount < 3}>
-          <Play size={16} /> Start
+          {/* Start -> Bắt đầu */}
+          <Play size={16} /> Bắt đầu
         </button>
         <button type="button" onClick={onStop} disabled={!status || status === 'COMPLETED' || status === 'STOPPED'}>
-          <Square size={16} /> Stop
+          {/* Stop -> Dừng */}
+          <Square size={16} /> Dừng
         </button>
         <button type="button" onClick={onReset}>
-          <RotateCcw size={16} /> Reset
+          {/* Reset -> Đặt lại */}
+          <RotateCcw size={16} /> Đặt lại
         </button>
       </div>
       <label className="toggle-row">
         <input type="checkbox" checked={fastMode} onChange={(event) => onFastModeChange(event.target.checked)} />
-        <span>Fast mode</span>
+        {/* <span>Fast mode</span> -> <span>Chế độ nhanh</span> */}
+        <span>Chế độ nhanh</span>
       </label>
       <div className="status-strip">
-        <span>Backend</span>
-        <strong className={backendStatus === 'connected' ? 'good' : 'bad'}>{backendStatus}</strong>
+        {/* <span>Backend</span> -> <span>Hệ thống nền</span> */}
+        <span>Hệ thống nền</span>
+        {/* connected -> Đã kết nối, disconnected -> Mất kết nối, checking -> Đang kiểm tra */}
+        <strong className={backendStatus === 'connected' ? 'good' : 'bad'}>
+          {backendStatus === 'connected' ? 'Đã kết nối' : backendStatus === 'disconnected' ? 'Mất kết nối' : 'Đang kiểm tra'}
+        </strong>
       </div>
       <div className="status-strip">
-        <span>Job</span>
-        <strong>{status || 'idle'}</strong>
+        {/* <span>Job</span> -> <span>Tiến trình</span> */}
+        <span>Tiến trình</span>
+        {/* idle -> Đang rảnh, RUNNING -> Đang chạy, COMPLETED -> Hoàn thành, STOPPED -> Đã dừng, FAILED -> Thất bại, PENDING -> Đang chờ */}
+        <strong>
+          {status === 'RUNNING' ? 'Đang chạy' : 
+           status === 'COMPLETED' ? 'Hoàn thành' : 
+           status === 'STOPPED' ? 'Đã dừng' : 
+           status === 'FAILED' ? 'Thất bại' : 
+           status === 'PENDING' ? 'Đang chờ' : 
+           status.startsWith('ERROR:') ? status.replace('ERROR:', 'LỖI:') : 'Đang treo'}
+        </strong>
       </div>
     </section>
   );
 }
 
 function StatisticsPanel({ stats }) {
+  /* 'Progress'    -> 'Tiến độ'
+    'FPS'         -> 'Khung hình/giây (FPS)'
+    'People'      -> 'Số người'
+    'Inside'      -> 'Trong vùng'
+    'Intrusions'  -> 'Số vụ xâm nhập'
+  */
   const items = [
-    ['Progress', `${Math.round((stats.progress || 0) * 100)}%`],
-    ['FPS', stats.fps.toFixed(1)],
-    ['People', stats.people_count],
-    ['Inside', stats.inside_count],
-    ['Intrusions', stats.intrusion_count]
+    ['Tiến độ', `${Math.round((stats.progress || 0) * 100)}%`],
+    ['Khung hình/giây (FPS)', stats.fps.toFixed(1)],
+    ['Số người', stats.people_count],
+    ['Trong vùng', stats.inside_count],
+    ['Số vụ xâm nhập', stats.intrusion_count]
   ];
   return (
     <section className="statistics-panel">
-      <h2>Statistics</h2>
+      {/* <h2>Statistics</h2> -> <h2>Thống kê</h2> */}
+      <h2>Thống kê</h2>
       <div className="stat-grid">
         {items.map(([label, value]) => (
           <div className="stat-tile" key={label}>
@@ -142,14 +171,20 @@ function StatisticsPanel({ stats }) {
 function EventTable({ events }) {
   return (
     <section className="event-panel">
-      <h2>Events</h2>
+      {/* <h2>Events</h2> -> <h2>Danh sách sự kiện</h2> */}
+      <h2>Danh sách sự kiện</h2>
       <table>
         <thead>
           <tr>
-            <th>Frame</th>
-            <th>Track</th>
-            <th>Confidence</th>
-            <th>Evidence</th>
+            {/* Frame -> Khung hình
+              Track -> ID Theo vết
+              Confidence -> Độ tin cậy
+              Evidence -> Bằng chứng
+            */}
+            <th>Khung hình</th>
+            <th>ID Theo vết</th>
+            <th>Độ tin cậy</th>
+            <th>Bằng chứng</th>
           </tr>
         </thead>
         <tbody>
@@ -160,9 +195,11 @@ function EventTable({ events }) {
               <td>{Number(event.confidence || 0).toFixed(2)}</td>
               <td>
                 {event.evidence_url ? (
-                  <img className="evidence-thumb" src={toApiUrl(event.evidence_url)} alt={`Evidence frame ${event.frame}`} title={event.evidence_path} />
+                  /* alt={`Evidence frame ${event.frame}`} -> alt={`Bằng chứng khung hình ${event.frame}`} */
+                  <img className="evidence-thumb" src={toApiUrl(event.evidence_url)} alt={`Bằng chứng khung hình ${event.frame}`} title={event.evidence_path} />
                 ) : event.evidence_path ? (
-                  <span title={event.evidence_path}>saved</span>
+                  /* saved -> Đã lưu */
+                  <span title={event.evidence_path}>Đã lưu</span>
                 ) : (
                   '-'
                 )}
@@ -171,7 +208,8 @@ function EventTable({ events }) {
           ))}
           {events.length === 0 && (
             <tr>
-              <td colSpan="4" className="empty-table">No intrusion events</td>
+              {/* 'No intrusion events' -> 'Không có sự kiện xâm nhập nào' */}
+              <td colSpan="4" className="empty-table">Không có sự kiện xâm nhập nào</td>
             </tr>
           )}
         </tbody>
@@ -221,7 +259,6 @@ function App() {
   const videoUrlRef = useRef('');
 
   const cleanupFrameUrl = () => {
-    // Frame preview đổi liên tục, phải revoke Blob URL cũ để tránh rò bộ nhớ.
     if (frameUrlRef.current) URL.revokeObjectURL(frameUrlRef.current);
     frameUrlRef.current = '';
   };
@@ -258,7 +295,6 @@ function App() {
     video.muted = true;
     video.src = url;
     video.onloadeddata = () => {
-      // Lấy một frame đầu tiên làm nền để người dùng vẽ polygon trước khi upload.
       video.currentTime = Math.min(0.1, video.duration || 0);
     };
     video.onseeked = () => {
@@ -280,7 +316,6 @@ function App() {
     closeSockets();
     let attempts = 0;
     const connectStatus = () => {
-      // Socket trạng thái dùng JSON message dạng { type, data }.
       const socket = new WebSocket(`${WS_BASE}/ws/jobs/${nextJobId}`);
       socketsRef.current.push(socket);
       socket.onmessage = (event) => {
@@ -299,13 +334,11 @@ function App() {
       };
       socket.onclose = () => {
         attempts += 1;
-        // Giới hạn reconnect để backend lỗi không tạo vòng retry vô hạn.
         if (attempts <= 3) window.setTimeout(connectStatus, attempts * 1000);
       };
     };
     connectStatus();
 
-    // Socket frame nhận binary JPEG Blob, không parse JSON và không dùng Base64.
     const frameSocket = new WebSocket(`${WS_BASE}/ws/jobs/${nextJobId}/frames`);
     frameSocket.binaryType = 'blob';
     frameSocket.onmessage = (event) => {
@@ -333,7 +366,6 @@ function App() {
           video_id,
           confidence: 0.35,
           confirm_frames: 5,
-          // Fast mode ưu tiên preview realtime: resize detect, skip frame và không ghi MP4 output.
           process_width: fastMode ? 640 : null,
           frame_stride: fastMode ? 3 : 1,
           save_output_video: !fastMode,
@@ -342,6 +374,7 @@ function App() {
       });
       if (!jobResponse.ok) throw new Error(await jobResponse.text());
       const created = await jobResponse.json();
+      setJobId(created.job_id);
       setJobId(created.job_id);
       setStatus('PENDING');
       connectJobSockets(created.job_id);
@@ -375,7 +408,8 @@ function App() {
   return (
     <main className="app-shell">
       <header>
-        <h1>Restricted Area Intrusion Detection</h1>
+        {/* <h1>Restricted Area Intrusion Detection</h1> -> <h1>Hệ thống Phát hiện Xâm nhập Vùng cấm</h1> */}
+        <h1>Hệ thống Phát hiện Xâm nhập Vùng cấm</h1>
       </header>
       <div className="workspace">
         <VideoPanel
