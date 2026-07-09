@@ -12,6 +12,7 @@ from uuid import uuid4
 import cv2
 import numpy as np
 
+from .image_filters import process_frame
 from .schemas import Point
 
 
@@ -98,8 +99,14 @@ class ZoneDetector:
     def contains(self, point: tuple[float, float]) -> bool:
         return cv2.pointPolygonTest(self.points, point, False) >= 0
 
-    def draw(self, frame: np.ndarray) -> None:
-        cv2.polylines(frame, [self.points], isClosed=True, color=(0, 180, 255), thickness=2)
+    def draw(self, frame: np.ndarray, is_active: bool = False) -> None:
+        color = (0, 0, 255) if is_active else (0, 180, 255)
+        # Vẽ viền ngoài
+        cv2.polylines(frame, [self.points], isClosed=True, color=color, thickness=2)
+        # Vẽ phần tô màu bán trong suốt bên trong
+        overlay = frame.copy()
+        cv2.fillPoly(overlay, [self.points], color)
+        cv2.addWeighted(overlay, 0.15, frame, 0.85, 0, frame)
 
 
 class IntrusionEventDetector:
@@ -110,26 +117,42 @@ class IntrusionEventDetector:
 
     def update(self, detections: list[Detection], zone: ZoneDetector) -> tuple[list[Detection], int]:
         active_tracks = {detection.track_id for detection in detections}
+        
+        # 1. Xử lý các track_id bị mất dấu (tracker mất do che khuất hoặc nhiễu)
         for track_id in list(self._inside_counts):
-            # Nếu không còn thấy người này nữa thì xóa bộ đếm của người đó.
             if track_id not in active_tracks:
-                self._inside_counts.pop(track_id, None)
-                self._alerted_tracks.discard(track_id)
+                # Giảm dần bộ đếm (debounce) thay vì xóa ngay lập tức
+                current = self._inside_counts[track_id]
+                if current > 0:
+                    self._inside_counts[track_id] = current - 1
+                else:
+                    self._inside_counts.pop(track_id, None)
+                    self._alerted_tracks.discard(track_id)
 
         inside_count = 0
         new_intrusions: list[Detection] = []
+        
+        # 2. Cập nhật trạng thái cho các track_id đang hiển thị
         for detection in detections:
             if zone.contains(detection.bottom_midpoint):
                 inside_count += 1
                 count = self._inside_counts.get(detection.track_id, 0) + 1
-                self._inside_counts[detection.track_id] = count
-                # Chỉ báo động khi người đó đứng trong vùng đủ nhiều frame liên tiếp.
+                # Giới hạn count tối đa bằng confirm_frames + 5 để tránh số đếm tăng vô tận
+                self._inside_counts[detection.track_id] = min(count, self.confirm_frames + 5)
+                
+                # Chỉ báo động khi đủ số frame liên tục và chưa báo động trước đó
                 if count >= self.confirm_frames and detection.track_id not in self._alerted_tracks:
                     self._alerted_tracks.add(detection.track_id)
                     new_intrusions.append(detection)
             else:
-                self._inside_counts[detection.track_id] = 0
-                self._alerted_tracks.discard(detection.track_id)
+                # Nếu bước ra khỏi vùng, giảm count dần dần (debounce)
+                current = self._inside_counts.get(detection.track_id, 0)
+                if current > 0:
+                    self._inside_counts[detection.track_id] = current - 1
+                elif detection.track_id in self._alerted_tracks:
+                    # Khi count thực sự về 0 (đã ra ngoài hoàn toàn), mới gỡ trạng thái báo động
+                    self._alerted_tracks.discard(detection.track_id)
+                    
         return new_intrusions, inside_count
 
 
@@ -217,8 +240,14 @@ class VideoProcessor:
                         break
                     frame_index += 1
                     processed_frame_count += 1
+                    # --- ÁP DỤNG TIỀN XỬ LÝ ẢNH TỪ FILE image_filters.py ---
+                    # Dùng thuật toán siêu nét (Khử nhiễu + Unsharp Mask)
+                    frame = process_frame(frame, filter_type="super_sharp")
+                    # -------------------------------------------------------
+
                     # Fast Mode có thể thu nhỏ frame trước khi đưa vào YOLO để tăng tốc.
                     detect_frame, scale_x, scale_y = prepare_detection_frame(frame, self.process_width)
+
                     # YOLO + ByteTrack trả về danh sách người, gồm ID, khung người và độ tin cậy.
                     detections = scale_detections(detector.track(detect_frame), scale_x, scale_y)
                     # Kiểm tra từng người có đứng trong vùng cấm đủ lâu để tạo cảnh báo không.
@@ -229,8 +258,8 @@ class VideoProcessor:
                         x1, y1, x2, y2 = [int(v) for v in detection.bbox]
                         cv2.rectangle(frame, (x1, y1), (x2, y2), (35, 160, 35), 2)
                         cv2.circle(frame, tuple(int(v) for v in detection.bottom_midpoint), 4, (0, 0, 255), -1)
-                    # Vẽ polygon vùng cấm màu vàng/cam lên frame.
-                    zone.draw(frame)
+                    # Vẽ polygon vùng cấm lên frame (chuyển sang đỏ nếu có người bên trong).
+                    zone.draw(frame, is_active=(inside_count > 0))
 
                     intrusion_events = []
                     for detection in intrusions:
@@ -288,12 +317,13 @@ class VideoProcessor:
 
 
 def encode_preview_frame(frame: np.ndarray) -> bytes:
-    # Nén frame thành ảnh JPEG nhỏ để gửi lên giao diện xem realtime.
+    # Tăng giới hạn độ phân giải preview gửi lên web từ 360p lên HD 720p
     height, width = frame.shape[:2]
-    scale = min(640 / width, 360 / height, 1.0)
+    scale = min(1280 / width, 720 / height, 1.0)
     if scale < 1.0:
         frame = cv2.resize(frame, (int(width * scale), int(height * scale)))
-    ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+    # Tăng chất lượng nén JPEG từ 80 lên 95 để video trên web mượt và nét hơn
+    ok, encoded = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
     if not ok:
         raise RuntimeError("failed to encode preview frame")
     return encoded.tobytes()

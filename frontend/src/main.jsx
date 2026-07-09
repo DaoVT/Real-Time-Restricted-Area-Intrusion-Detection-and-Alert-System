@@ -25,7 +25,7 @@ function VideoPanel({ file, previewUrl, liveFrameUrl, points, onAddPoint, onClea
       canvas.height = image.clientHeight || 360;
       const context = canvas.getContext('2d');
       context.clearRect(0, 0, canvas.width, canvas.height);
-      if (points.length > 0) {
+      if (points.length > 0 && !liveFrameUrl) {
         context.strokeStyle = '#f59e0b';
         context.fillStyle = 'rgba(245, 158, 11, 0.18)';
         context.lineWidth = 2;
@@ -70,11 +70,13 @@ function VideoPanel({ file, previewUrl, liveFrameUrl, points, onAddPoint, onClea
       </div>
       <div className="video-stage">
         {(liveFrameUrl || previewUrl) ? (
-          <img ref={imageRef} src={liveFrameUrl || previewUrl} alt={file?.name || 'Video preview'} />
+          <div className="video-wrapper">
+            <img ref={imageRef} src={liveFrameUrl || previewUrl} alt={file?.name || 'Video preview'} />
+            <canvas ref={canvasRef} onClick={handleCanvasClick} />
+          </div>
         ) : (
           <div className="empty-stage">Select a video</div>
         )}
-        <canvas ref={canvasRef} onClick={handleCanvasClick} />
       </div>
     </section>
   );
@@ -262,17 +264,20 @@ function App() {
       video.currentTime = Math.min(0.1, video.duration || 0);
     };
     video.onseeked = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 360;
-      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-        const frameUrl = URL.createObjectURL(blob);
-        previewUrlRef.current = frameUrl;
-        setPreviewUrl(frameUrl);
-      }, 'image/jpeg', 0.88);
+      // Đợi 250ms để trình duyệt giải mã xong frame trên GPU trước khi vẽ lên canvas
+      setTimeout(() => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 360;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (!blob) return;
+          if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+          const frameUrl = URL.createObjectURL(blob);
+          previewUrlRef.current = frameUrl;
+          setPreviewUrl(frameUrl);
+        }, 'image/jpeg', 0.88);
+      }, 250);
     };
   };
 
