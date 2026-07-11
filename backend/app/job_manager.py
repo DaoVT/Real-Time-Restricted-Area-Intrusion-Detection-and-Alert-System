@@ -127,6 +127,7 @@ class JobManager:
                 process_width=payload.process_width,
                 frame_stride=payload.frame_stride,
                 save_output_video=payload.save_output_video,
+                filter_type=payload.filter_type,
             )
             result = processor.run()
             status = JobStatus.STOPPED if result.get("stopped") else JobStatus.COMPLETED

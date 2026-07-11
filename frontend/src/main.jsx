@@ -25,7 +25,7 @@ function VideoPanel({ file, previewUrl, liveFrameUrl, points, onAddPoint, onClea
       canvas.height = image.clientHeight || 360;
       const context = canvas.getContext('2d');
       context.clearRect(0, 0, canvas.width, canvas.height);
-      if (points.length > 0) {
+      if (points.length > 0 && !liveFrameUrl) {
         context.strokeStyle = '#f59e0b';
         context.fillStyle = 'rgba(245, 158, 11, 0.18)';
         context.lineWidth = 2;
@@ -71,13 +71,14 @@ function VideoPanel({ file, previewUrl, liveFrameUrl, points, onAddPoint, onClea
       </div>
       <div className="video-stage">
         {(liveFrameUrl || previewUrl) ? (
-          /* alt={file?.name || 'Video preview'} -> alt={file?.name || 'Xem trước video'} */
-          <img ref={imageRef} src={liveFrameUrl || previewUrl} alt={file?.name || 'Xem trước video'} />
+          <div className="video-wrapper">
+            <img ref={imageRef} src={liveFrameUrl || previewUrl} alt={file?.name || 'Xem trước video'} />
+            <canvas ref={canvasRef} onClick={handleCanvasClick} />
+          </div>
         ) : (
           /* 'Select a video' -> 'Vui lòng chọn một video' */
           <div className="empty-stage">Vui lòng chọn một video</div>
         )}
-        <canvas ref={canvasRef} onClick={handleCanvasClick} />
       </div>
     </section>
   );
@@ -298,17 +299,20 @@ function App() {
       video.currentTime = Math.min(0.1, video.duration || 0);
     };
     video.onseeked = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 360;
-      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-        const frameUrl = URL.createObjectURL(blob);
-        previewUrlRef.current = frameUrl;
-        setPreviewUrl(frameUrl);
-      }, 'image/jpeg', 0.88);
+      // Đợi 250ms để trình duyệt giải mã xong frame trên GPU trước khi vẽ lên canvas
+      setTimeout(() => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 360;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => {
+          if (!blob) return;
+          if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+          const frameUrl = URL.createObjectURL(blob);
+          previewUrlRef.current = frameUrl;
+          setPreviewUrl(frameUrl);
+        }, 'image/jpeg', 0.88);
+      }, 250);
     };
   };
 
@@ -369,7 +373,8 @@ function App() {
           process_width: fastMode ? 640 : null,
           frame_stride: fastMode ? 3 : 1,
           save_output_video: !fastMode,
-          zone_points: points
+          zone_points: points,
+          filter_type: "auto"
         })
       });
       if (!jobResponse.ok) throw new Error(await jobResponse.text());
