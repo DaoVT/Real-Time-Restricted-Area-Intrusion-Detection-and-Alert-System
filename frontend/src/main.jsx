@@ -342,7 +342,8 @@ function App() {
           process_width: fastMode ? 640 : null,
           frame_stride: fastMode ? 3 : 1,
           save_output_video: !fastMode,
-          zone_points: points
+          zone_points: points,
+          filter_type: "auto"
         })
       });
       if (!jobResponse.ok) throw new Error(await jobResponse.text());

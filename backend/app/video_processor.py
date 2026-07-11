@@ -171,6 +171,7 @@ class VideoProcessor:
         process_width: int | None = None,
         frame_stride: int = 1,
         save_output_video: bool = True,
+        filter_type: str = "none",
     ) -> None:
         self.input_path = Path(input_path)
         self.output_dir = Path(output_dir)
@@ -184,6 +185,7 @@ class VideoProcessor:
         self.process_width = process_width
         self.frame_stride = max(frame_stride, 1)
         self.save_output_video = save_output_video
+        self.filter_type = filter_type
 
     def run(self) -> dict:
         # Đây là luồng chính: mở video, đọc từng frame, phát hiện người và ghi kết quả.
@@ -240,9 +242,14 @@ class VideoProcessor:
                         break
                     frame_index += 1
                     processed_frame_count += 1
+                    # --- ĐÁNH GIÁ AUTO FILTER 1 LẦN DUY NHẤT ---
+                    if self.filter_type == "auto":
+                        from .image_filters import detect_best_filter
+                        self.filter_type = detect_best_filter(frame)
+                        print(f"Auto-detected image filter: {self.filter_type}")
+
                     # --- ÁP DỤNG TIỀN XỬ LÝ ẢNH TỪ FILE image_filters.py ---
-                    # Dùng thuật toán siêu nét (Khử nhiễu + Unsharp Mask)
-                    frame = process_frame(frame, filter_type="super_sharp")
+                    frame = process_frame(frame, filter_type=self.filter_type)
                     # -------------------------------------------------------
 
                     # Fast Mode có thể thu nhỏ frame trước khi đưa vào YOLO để tăng tốc.

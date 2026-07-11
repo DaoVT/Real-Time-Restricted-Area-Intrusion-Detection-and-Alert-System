@@ -16,6 +16,7 @@ def main() -> int:
     parser.add_argument("--process-width", default=None, type=int)
     parser.add_argument("--frame-stride", default=1, type=int)
     parser.add_argument("--no-output-video", action="store_true")
+    parser.add_argument("--filter-type", default="auto", type=str, help="Image preprocessing filter type (auto, clahe, gaussian, etc.)")
     args = parser.parse_args()
 
     try:
@@ -28,6 +29,7 @@ def main() -> int:
             process_width=args.process_width,
             frame_stride=args.frame_stride,
             save_output_video=not args.no_output_video,
+            filter_type=args.filter_type,
         ).run()
     except Exception as exc:
         print(f"Video processing failed: {exc}")

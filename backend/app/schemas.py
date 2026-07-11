@@ -19,6 +19,7 @@ class JobCreate(BaseModel):
     process_width: int | None = Field(default=None, ge=320, le=1920)
     frame_stride: int = Field(default=1, ge=1, le=30)
     save_output_video: bool = True
+    filter_type: str = Field(default="auto")
     zone_points: list[Point] = Field(min_length=3)
 
     @field_validator("zone_points")
