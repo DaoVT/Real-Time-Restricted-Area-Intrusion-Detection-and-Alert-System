@@ -7,6 +7,7 @@ import numpy as np
 from backend.app.video_processor import (
     Detection,
     IntrusionEventDetector,
+    IntrusionState,
     ZoneDetector,
     encode_preview_frame,
     load_zone_file,
@@ -30,6 +31,66 @@ def test_intrusion_requires_confirm_frames_and_deduplicates():
 
     third, _ = detector.update([detection], zone)
     assert third == []
+    assert detector.track_states[8].state == IntrusionState.INTRUDING
+
+
+def test_exiting_debounces_boundary_jitter_and_allows_real_reentry():
+    zone = ZoneDetector([{"x": 0.0, "y": 0.0}, {"x": 0.5, "y": 0.0}, {"x": 0.5, "y": 1.0}, {"x": 0.0, "y": 1.0}], 100, 100)
+    detector = IntrusionEventDetector(confirm_frames=2, source_fps=10, exit_confirm_seconds=0.3)
+    inside_detection = Detection(track_id=3, bbox=(10, 10, 20, 20), confidence=0.9)
+    outside_detection = Detection(track_id=3, bbox=(70, 10, 80, 20), confidence=0.9)
+
+    detector.update([inside_detection], zone, video_time_sec=0.0)
+    events, _ = detector.update([inside_detection], zone, video_time_sec=0.1)
+    assert len(events) == 1
+
+    detector.update([outside_detection], zone, video_time_sec=0.2)
+    assert detector.track_states[3].state == IntrusionState.EXITING
+    events, _ = detector.update([inside_detection], zone, video_time_sec=0.3)
+    assert events == []
+    assert detector.track_states[3].state == IntrusionState.INTRUDING
+
+    detector.update([outside_detection], zone, video_time_sec=0.4)
+    detector.update([outside_detection], zone, video_time_sec=0.71)
+    assert detector.track_states[3].state == IntrusionState.OUTSIDE
+
+    detector.update([inside_detection], zone, video_time_sec=0.8)
+    events, _ = detector.update([inside_detection], zone, video_time_sec=0.91)
+    assert len(events) == 1
+
+
+def test_lost_track_recovers_state_then_expires_after_timeout():
+    zone = ZoneDetector([{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 0.0}, {"x": 1.0, "y": 1.0}, {"x": 0.0, "y": 1.0}], 100, 100)
+    detector = IntrusionEventDetector(confirm_frames=1, track_timeout_seconds=2.0)
+    detection = Detection(track_id=5, bbox=(10, 10, 20, 20), confidence=0.8)
+
+    events, _ = detector.update([detection], zone, video_time_sec=0.0)
+    assert len(events) == 1
+    detector.update([], zone, video_time_sec=0.1)
+    assert detector.track_states[5].state == IntrusionState.LOST
+
+    events, _ = detector.update([detection], zone, video_time_sec=0.2)
+    assert events == []
+    assert detector.track_states[5].state == IntrusionState.INTRUDING
+
+    detector.update([], zone, video_time_sec=0.3)
+    detector.update([], zone, video_time_sec=2.31)
+    assert 5 not in detector.track_states
+
+
+def test_confirm_time_uses_source_video_timeline_in_fast_mode():
+    zone = ZoneDetector([{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 0.0}, {"x": 1.0, "y": 1.0}, {"x": 0.0, "y": 1.0}], 100, 100)
+    detector = IntrusionEventDetector(confirm_frames=3, source_fps=30, frame_stride=3)
+    detection = Detection(track_id=9, bbox=(10, 10, 20, 20), confidence=0.8)
+
+    first, _ = detector.update([detection], zone, video_time_sec=0.0)
+    second, _ = detector.update([detection], zone, video_time_sec=0.1)
+    third, _ = detector.update([detection], zone, video_time_sec=0.2)
+
+    assert first == []
+    assert second == []
+    assert len(third) == 1
+    assert detector.confirm_seconds == 0.2
 
 
 def test_no_people_means_no_intrusion_event():
