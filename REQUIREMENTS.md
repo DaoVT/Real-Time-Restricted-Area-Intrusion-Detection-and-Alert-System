@@ -313,19 +313,34 @@ Quy tắc preview frame:
 - Fast Mode có thể resize frame detect bằng `process_width` và bỏ qua frame bằng `frame_stride`; detection được scale ngược về tọa độ frame gốc trước khi kiểm tra vùng và vẽ overlay.
 - Chọn device YOLO ưu tiên GPU device `0` khi PyTorch CUDA khả dụng, nếu không thì fallback về CPU.
 
-## Logic chống cảnh báo lặp
+## FSM và logic chống cảnh báo lặp
 
-`IntrusionEventDetector` tracks two structures:
+`IntrusionEventDetector` giữ một `TrackIntrusionState` riêng cho mỗi `track_id`. FSM gồm:
 
-- `_inside_counts`: số frame liên tục mà mỗi `track_id` nằm trong vùng cấm.
-- `_alerted_tracks`: các `track_id` đã cảnh báo trong lần đứng trong vùng hiện tại.
+- `OUTSIDE`: track ở ngoài vùng cấm.
+- `CONFIRMING`: điểm chân đã vào polygon nhưng chưa đủ thời gian xác nhận.
+- `INTRUDING`: đã xác nhận xâm nhập và đã tạo cảnh báo.
+- `EXITING`: điểm chân vừa ra ngoài, đang chờ xác nhận để chống rung ở biên polygon.
+- `LOST`: ByteTrack tạm thời không trả về track; trạng thái trước đó được giữ để có thể khôi phục.
+
+Luồng chính:
+
+```text
+OUTSIDE -> CONFIRMING -> INTRUDING -> EXITING -> OUTSIDE
+                         ^              |
+                         +--------------+
+```
 
 Rules:
 
-- Một người chỉ tạo intrusion event khi midpoint cạnh dưới bounding box nằm trong polygon liên tục ít nhất `confirm_frames`.
-- Khi một `track_id` đã cảnh báo và vẫn tiếp tục đứng trong vùng, không cảnh báo lặp.
-- Khi track rời vùng, inside count reset về 0 và track được phép cảnh báo lại nếu sau đó vào vùng đủ `confirm_frames`.
-- Khi track biến mất khỏi frame, state của track đó bị xóa.
+- Một người chỉ tạo intrusion event khi midpoint cạnh dưới bounding box nằm trong polygon đủ `confirm_frames`.
+- `confirm_frames` được quy đổi theo `source_fps` và `frame_stride`, sau đó so sánh bằng thời gian video gốc thay vì thời gian chạy của máy.
+- Khi một track vẫn ở `INTRUDING`, hệ thống không tạo cảnh báo lặp.
+- Khi điểm chân ra ngoài, track chuyển sang `EXITING`; chỉ khi ngoài vùng liên tục đủ `0.3` giây video mới chuyển về `OUTSIDE`.
+- Nếu track quay lại vùng trong lúc `EXITING`, track trở về `INTRUDING` và không cảnh báo lại.
+- Track mất dấu chuyển sang `LOST`. Nếu cùng `track_id` xuất hiện lại trước `2.0` giây video, FSM khôi phục trạng thái trước; nếu hết timeout, state được dọn khỏi memory.
+- Mỗi lần chuyển trạng thái được lưu trong `state_history` của track để kiểm thử và debug.
+- FSM xác nhận có xâm nhập hay không. Model đánh giá rủi ro `LOW/MEDIUM/HIGH` là thành phần độc lập và chưa được triển khai.
 
 ## File đầu ra
 
@@ -380,3 +395,5 @@ Các phần sau chưa có hoặc không thuộc phạm vi hiện tại:
 - Không có retry/resume job sau lỗi.
 - Không có giới hạn dung lượng upload theo cấu hình riêng.
 - Không có test end-to-end với model YOLO thật và sample video thật trong repository.
+- Chưa có model mức cao phân loại rủi ro `LOW/MEDIUM/HIGH`; hiện tại hệ thống mới dùng FSM luật để xác nhận xâm nhập.
+- Chưa có GlobalTrackManager để ghép một người khi ByteTrack cấp `track_id` mới và chưa có Re-ID ngoại hình.

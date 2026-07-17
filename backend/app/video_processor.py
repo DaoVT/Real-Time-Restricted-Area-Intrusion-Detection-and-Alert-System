@@ -3,7 +3,8 @@ from __future__ import annotations
 import csv
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from threading import Event
 from typing import Callable, Iterable
@@ -109,51 +110,214 @@ class ZoneDetector:
         cv2.addWeighted(overlay, 0.15, frame, 0.85, 0, frame)
 
 
+class IntrusionState(str, Enum):
+    # OUTSIDE: người đang ở ngoài vùng cấm.
+    OUTSIDE = "OUTSIDE"
+    # CONFIRMING: người vừa vào vùng, cần ở đủ lâu trước khi xác nhận xâm nhập.
+    CONFIRMING = "CONFIRMING"
+    # INTRUDING: đã xác nhận xâm nhập và đã phát cảnh báo cho lần vào vùng này.
+    INTRUDING = "INTRUDING"
+    # EXITING: người vừa ra khỏi vùng, chờ thêm để tránh bounding box rung ở biên.
+    EXITING = "EXITING"
+    # LOST: ByteTrack tạm thời không nhìn thấy track nhưng chưa hết thời gian chờ.
+    LOST = "LOST"
+
+
+@dataclass
+class StateTransition:
+    # Một bản ghi cho biết FSM đổi từ trạng thái nào sang trạng thái nào tại thời gian video nào.
+    video_time_sec: float
+    from_state: IntrusionState
+    to_state: IntrusionState
+
+
+@dataclass
+class TrackIntrusionState:
+    # Mỗi track_id có một đối tượng riêng để trạng thái của nhiều người không ảnh hưởng lẫn nhau.
+    state: IntrusionState = IntrusionState.OUTSIDE
+    # Giữ trạng thái trước để có thể phục hồi sau khi ByteTrack tạm mất dấu.
+    previous_state: IntrusionState = IntrusionState.OUTSIDE
+
+    # Các mốc thời gian đều thuộc timeline video, không dùng tốc độ chạy thực tế của máy.
+    first_seen_time_sec: float = 0.0
+    last_seen_time_sec: float = 0.0
+    entry_time_sec: float | None = None
+    confirmed_time_sec: float | None = None
+    exit_start_time_sec: float | None = None
+    lost_start_time_sec: float | None = None
+
+    # Các thuộc tính này mô tả phiên vào vùng hiện tại và phục vụ mở rộng model mức cao sau này.
+    inside_frames: int = 0
+    outside_frames: int = 0
+    alerted: bool = False
+    entry_count: int = 0
+    event_id: str | None = None
+    last_foot_point: tuple[float, float] | None = None
+    state_history: list[StateTransition] = field(default_factory=list)
+
+
 class IntrusionEventDetector:
-    def __init__(self, confirm_frames: int) -> None:
-        self.confirm_frames = confirm_frames
-        self._inside_counts: dict[int, int] = {}
-        self._alerted_tracks: set[int] = set()
+    def __init__(
+        self,
+        confirm_frames: int,
+        source_fps: float = 25.0,
+        frame_stride: int = 1,
+        exit_confirm_seconds: float = 0.3,
+        track_timeout_seconds: float = 2.0,
+    ) -> None:
+        # Chuẩn hóa cấu hình để tránh ngưỡng âm hoặc bằng 0 làm FSM chuyển sai trạng thái.
+        self.confirm_frames = max(confirm_frames, 1)
+        self.source_fps = max(source_fps, 1.0)
+        self.frame_stride = max(frame_stride, 1)
+        self.exit_confirm_seconds = max(exit_confirm_seconds, 0.0)
+        self.track_timeout_seconds = max(track_timeout_seconds, 0.0)
+        # Từ điển trung tâm: khóa là track_id, giá trị là FSM của người tương ứng.
+        self.track_states: dict[int, TrackIntrusionState] = {}
+        # Chỉ dùng trong unit test hoặc nơi gọi không truyền timestamp video.
+        self._synthetic_time_sec = 0.0
 
-    def update(self, detections: list[Detection], zone: ZoneDetector) -> tuple[list[Detection], int]:
+    @property
+    def confirm_seconds(self) -> float:
+        # Giữ tương thích confirm_frames nhưng đo trên timeline video gốc, kể cả khi Fast Mode bỏ frame.
+        return (self.confirm_frames - 1) * self.frame_stride / self.source_fps
+
+    def update(
+        self,
+        detections: list[Detection],
+        zone: ZoneDetector,
+        video_time_sec: float | None = None,
+    ) -> tuple[list[Detection], int]:
+        # Bước 1: xác định thời gian video và đánh dấu các track không còn xuất hiện là LOST.
+        current_time = self._resolve_video_time(video_time_sec)
         active_tracks = {detection.track_id for detection in detections}
-        
-        # 1. Xử lý các track_id bị mất dấu (tracker mất do che khuất hoặc nhiễu)
-        for track_id in list(self._inside_counts):
-            if track_id not in active_tracks:
-                # Giảm dần bộ đếm (debounce) thay vì xóa ngay lập tức
-                current = self._inside_counts[track_id]
-                if current > 0:
-                    self._inside_counts[track_id] = current - 1
-                else:
-                    self._inside_counts.pop(track_id, None)
-                    self._alerted_tracks.discard(track_id)
+        self._mark_missing_tracks(active_tracks, current_time)
 
+        # Bước 2: cập nhật FSM độc lập cho từng người đang được ByteTrack nhìn thấy.
         inside_count = 0
         new_intrusions: list[Detection] = []
-        
-        # 2. Cập nhật trạng thái cho các track_id đang hiển thị
         for detection in detections:
+            state = self._get_or_create_state(detection.track_id, current_time)
+            state.last_seen_time_sec = current_time
+            state.last_foot_point = detection.bottom_midpoint
+
+            if state.state == IntrusionState.LOST:
+                # Cùng track_id xuất hiện lại trước timeout: quay về trạng thái trước khi mất dấu.
+                resume_state = state.previous_state
+                state.lost_start_time_sec = None
+                self._transition(state, resume_state, current_time)
+
+            # Điểm giữa cạnh dưới bounding box được coi là vị trí chân để kiểm tra polygon.
             if zone.contains(detection.bottom_midpoint):
                 inside_count += 1
-                count = self._inside_counts.get(detection.track_id, 0) + 1
-                # Giới hạn count tối đa bằng confirm_frames + 5 để tránh số đếm tăng vô tận
-                self._inside_counts[detection.track_id] = min(count, self.confirm_frames + 5)
-                
-                # Chỉ báo động khi đủ số frame liên tục và chưa báo động trước đó
-                if count >= self.confirm_frames and detection.track_id not in self._alerted_tracks:
-                    self._alerted_tracks.add(detection.track_id)
+                if self._update_inside(state, current_time):
                     new_intrusions.append(detection)
             else:
-                # Nếu bước ra khỏi vùng, giảm count dần dần (debounce)
-                current = self._inside_counts.get(detection.track_id, 0)
-                if current > 0:
-                    self._inside_counts[detection.track_id] = current - 1
-                elif detection.track_id in self._alerted_tracks:
-                    # Khi count thực sự về 0 (đã ra ngoài hoàn toàn), mới gỡ trạng thái báo động
-                    self._alerted_tracks.discard(detection.track_id)
-                    
+                self._update_outside(state, current_time)
+
         return new_intrusions, inside_count
+
+    def _resolve_video_time(self, video_time_sec: float | None) -> float:
+        if video_time_sec is not None:
+            self._synthetic_time_sec = max(video_time_sec, self._synthetic_time_sec)
+            return video_time_sec
+        current_time = self._synthetic_time_sec
+        self._synthetic_time_sec += self.frame_stride / self.source_fps
+        return current_time
+
+    def _get_or_create_state(self, track_id: int, current_time: float) -> TrackIntrusionState:
+        state = self.track_states.get(track_id)
+        if state is None:
+            # Track mới luôn bắt đầu từ OUTSIDE rồi mới được kiểm tra vị trí ở bước tiếp theo.
+            state = TrackIntrusionState(
+                first_seen_time_sec=current_time,
+                last_seen_time_sec=current_time,
+            )
+            self.track_states[track_id] = state
+        return state
+
+    def _mark_missing_tracks(self, active_tracks: set[int], current_time: float) -> None:
+        for track_id, state in list(self.track_states.items()):
+            if track_id in active_tracks:
+                continue
+            if state.state != IntrusionState.LOST:
+                # Không xóa ngay vì người có thể chỉ bị che khuất trong vài frame.
+                state.previous_state = state.state
+                state.lost_start_time_sec = current_time
+                self._transition(state, IntrusionState.LOST, current_time)
+                continue
+            lost_since = state.lost_start_time_sec if state.lost_start_time_sec is not None else current_time
+            if current_time - lost_since >= self.track_timeout_seconds:
+                # Hết timeout mới dọn state để tránh giữ dữ liệu track cũ trong bộ nhớ.
+                del self.track_states[track_id]
+
+    def _update_inside(self, state: TrackIntrusionState, current_time: float) -> bool:
+        # Track đang ở trong polygon nên tăng thời gian hiện diện và hủy bộ đếm ngoài vùng.
+        state.inside_frames += 1
+        state.outside_frames = 0
+
+        if state.state == IntrusionState.OUTSIDE:
+            # Lần đầu bước vào chỉ chuyển sang CONFIRMING, chưa phát cảnh báo ngay.
+            state.entry_time_sec = current_time
+            state.entry_count += 1
+            state.alerted = False
+            state.event_id = None
+            self._transition(state, IntrusionState.CONFIRMING, current_time)
+
+        if state.state == IntrusionState.EXITING:
+            # Quay lại trước ngưỡng xác nhận ra ngoài: vẫn là cùng một sự kiện xâm nhập.
+            state.exit_start_time_sec = None
+            self._transition(state, IntrusionState.INTRUDING, current_time)
+            return False
+
+        entry_time = state.entry_time_sec if state.entry_time_sec is not None else current_time
+        if state.state == IntrusionState.CONFIRMING and current_time - entry_time >= self.confirm_seconds:
+            # Chỉ nhánh này trả True, vì vậy mỗi phiên vào vùng chỉ tạo đúng một cảnh báo mới.
+            state.confirmed_time_sec = current_time
+            state.alerted = True
+            state.event_id = str(uuid4())
+            self._transition(state, IntrusionState.INTRUDING, current_time)
+            return True
+        return False
+
+    def _update_outside(self, state: TrackIntrusionState, current_time: float) -> None:
+        # Track đang ở ngoài polygon nên chuỗi frame xác nhận bên trong không còn liên tục.
+        state.outside_frames += 1
+        state.inside_frames = 0
+
+        if state.state == IntrusionState.CONFIRMING:
+            # Ra ngoài trước khi đủ thời gian: hủy lần vào vùng chưa được xác nhận.
+            self._reset_to_outside(state, current_time)
+            return
+        if state.state == IntrusionState.INTRUDING:
+            # Chưa kết thúc sự kiện ngay; chuyển EXITING để chống rung ở mép polygon.
+            state.exit_start_time_sec = current_time
+            self._transition(state, IntrusionState.EXITING, current_time)
+            return
+        if state.state == IntrusionState.EXITING:
+            exit_started = state.exit_start_time_sec if state.exit_start_time_sec is not None else current_time
+            if current_time - exit_started >= self.exit_confirm_seconds:
+                # Chỉ sau khi ở ngoài đủ lâu mới kết thúc sự kiện và cho phép cảnh báo lần sau.
+                self._reset_to_outside(state, current_time)
+
+    def _reset_to_outside(self, state: TrackIntrusionState, current_time: float) -> None:
+        # Xóa dữ liệu của phiên xâm nhập vừa kết thúc, nhưng vẫn giữ FSM của track để tiếp tục theo dõi.
+        state.entry_time_sec = None
+        state.confirmed_time_sec = None
+        state.exit_start_time_sec = None
+        state.inside_frames = 0
+        state.alerted = False
+        state.event_id = None
+        self._transition(state, IntrusionState.OUTSIDE, current_time)
+
+    @staticmethod
+    def _transition(state: TrackIntrusionState, target: IntrusionState, current_time: float) -> None:
+        if state.state == target:
+            return
+        source = state.state
+        state.previous_state = source
+        state.state = target
+        # Lịch sử này giúp kiểm thử và giải thích FSM khi demo mà không tác động quyết định cảnh báo.
+        state.state_history.append(StateTransition(current_time, source, target))
 
 
 class VideoProcessor:
@@ -223,7 +387,11 @@ class VideoProcessor:
             detector = self.detector or PersonDetector(self.confidence)
             zone = ZoneDetector(self.zone_points, width, height)
             # intrusion_detector nhớ trạng thái từng người để biết khi nào đủ điều kiện báo động.
-            intrusion_detector = IntrusionEventDetector(self.confirm_frames)
+            intrusion_detector = IntrusionEventDetector(
+                confirm_frames=self.confirm_frames,
+                source_fps=source_fps,
+                frame_stride=self.frame_stride,
+            )
             intrusion_count = 0
             frame_index = 0
             processed_frame_count = 0
@@ -258,7 +426,12 @@ class VideoProcessor:
                     # YOLO + ByteTrack trả về danh sách người, gồm ID, khung người và độ tin cậy.
                     detections = scale_detections(detector.track(detect_frame), scale_x, scale_y)
                     # Kiểm tra từng người có đứng trong vùng cấm đủ lâu để tạo cảnh báo không.
-                    intrusions, inside_count = intrusion_detector.update(detections, zone)
+                    video_time_sec = frame_index / source_fps
+                    intrusions, inside_count = intrusion_detector.update(
+                        detections,
+                        zone,
+                        video_time_sec=video_time_sec,
+                    )
 
                     # Vẽ kết quả lên frame: khung người màu xanh và điểm chân màu đỏ.
                     for detection in detections:

@@ -12,8 +12,9 @@ Luồng chính của hệ thống:
 4. Backend tạo job xử lý nền, không xử lý video trực tiếp trong HTTP endpoint.
 5. YOLO phát hiện người, ByteTrack gán `track_id`.
 6. Hệ thống lấy điểm giữa cạnh dưới bounding box làm vị trí chân người.
-7. Nếu chân người nằm trong vùng cấm đủ `confirm_frames` liên tục thì tạo cảnh báo.
-8. Frontend nhận progress, thống kê, event cảnh báo và preview frame qua WebSocket.
+7. FSM riêng của từng `track_id` quản lý các trạng thái `OUTSIDE`, `CONFIRMING`, `INTRUDING`, `EXITING` và `LOST`.
+8. Nếu chân người nằm trong vùng cấm đủ `confirm_frames` thì FSM tạo một cảnh báo; rung ở biên vùng hoặc mất dấu ngắn không tạo cảnh báo lặp.
+9. Frontend nhận progress, thống kê, event cảnh báo và preview frame qua WebSocket.
 
 ## Cấu Trúc
 
