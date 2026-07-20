@@ -35,7 +35,7 @@ class Detection:
 
 
 class PersonDetector:
-    def __init__(self, confidence: float = 0.35, model_name: str = "yolov8n.pt") -> None:
+    def __init__(self, confidence: float = 0.35, model_name: str = "best.pt") -> None:
         self.confidence = confidence
         try:
             from ultralytics import YOLO
@@ -397,6 +397,8 @@ class VideoProcessor:
             processed_frame_count = 0
             # Chỉ gửi một phần frame lên UI để preview nhẹ hơn, tối đa khoảng 10 FPS.
             preview_interval = max(1, int(output_fps / 10))
+            # Gửi dữ liệu thống kê lên UI khoảng 5 lần/giây để tránh làm giật giao diện web
+            stat_interval = max(1, int(output_fps / 5))
             started_at = time.perf_counter()
 
             with events_csv.open("w", newline="", encoding="utf-8") as csv_file:
@@ -469,7 +471,7 @@ class VideoProcessor:
                         "intrusion_count": intrusion_count,
                         "events": intrusion_events,
                     }
-                    if self.progress_callback:
+                    if self.progress_callback and processed_frame_count % stat_interval == 0:
                         self.progress_callback(stats)
                     if self.frame_callback and processed_frame_count % preview_interval == 0:
                         # Gửi preview frame đã nén JPEG để UI hiển thị video realtime.

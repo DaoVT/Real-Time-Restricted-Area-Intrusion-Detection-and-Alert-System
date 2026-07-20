@@ -19,3 +19,21 @@ sample-videos/
 .DS_Store
 
 Real-Time-Restricted-Area-Intrusion-Detection-and-Alert-System/
+
+# Custom ignores
+TRAIN_MEGA_GUIDE.md
+TRAIN_KAGGLE_MEGA_GUIDE.md
+TEST_REPORT.md
+*train_mega*
+*test_report*
+*test report*
+note/
+video_files/
+ExDark_YOLO/
+Mega_Dataset_Final/
+VisDrone2019-VID-val/
+cctv_test/
+LLVIP/
+*llvip*
+test_and_model/
+test_and_model.zip

@@ -1,0 +1,7 @@
+path: D:\xla\Real-Time-Restricted-Area-Intrusion-Detection-and-Alert-System\Mega_Dataset_Final
+train: images/train
+val: images/val
+test: images/test
+
+nc: 1
+names: ['person']

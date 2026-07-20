@@ -1,0 +1,6 @@
+names:
+- person
+nc: 1
+path: D:\xla\Real-Time-Restricted-Area-Intrusion-Detection-and-Alert-System\cctv_test
+train: images
+val: images
