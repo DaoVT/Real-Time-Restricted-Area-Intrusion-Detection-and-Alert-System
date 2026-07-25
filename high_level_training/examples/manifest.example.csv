@@ -1,0 +1,2 @@
+video_path,zone_path,camera_id,output_name,source_url,source_note
+../../sample-videos/sample.mp4,../../sample-videos/zone.json,WEB_CAM_001,sample_run,https://example.com,Video mẫu kho hàng

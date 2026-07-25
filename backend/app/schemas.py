@@ -51,6 +51,11 @@ class JobSnapshot(BaseModel):
     people_count: int = 0
     inside_count: int = 0
     intrusion_count: int = 0
+    risk_model_available: bool = False
+    risk_model_error: str | None = None
+    risk_level: Literal["LOW", "MEDIUM", "HIGH"] | None = None
+    risk_track_id: int | None = None
+    risk_probabilities: dict[str, float] = Field(default_factory=dict)
     error: str | None = None
     output_video: str | None = None
     events_csv: str | None = None
@@ -73,5 +78,5 @@ class JobResultResponse(BaseModel):
 
 
 class WsMessage(BaseModel):
-    type: Literal["progress", "statistics", "intrusion", "completed", "error"]
+    type: Literal["progress", "statistics", "intrusion", "risk", "completed", "error"]
     data: dict[str, Any]

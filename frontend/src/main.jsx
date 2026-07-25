@@ -169,6 +169,59 @@ function StatisticsPanel({ stats }) {
   );
 }
 
+const RISK_LABELS = {
+  LOW: 'Thấp',
+  MEDIUM: 'Trung bình',
+  HIGH: 'Cao'
+};
+
+function RiskPanel({ risk }) {
+  const probabilities = risk.probabilities || {};
+  return (
+    <section className="risk-panel">
+      <div className="risk-heading">
+        <h2>Đánh giá rủi ro</h2>
+        {risk.level && (
+          <strong className={`risk-badge risk-${risk.level.toLowerCase()}`}>
+            {RISK_LABELS[risk.level] || risk.level}
+          </strong>
+        )}
+      </div>
+      {risk.available === false ? (
+        <p className="risk-message bad">{risk.error || 'Model rủi ro chưa sẵn sàng'}</p>
+      ) : !risk.level ? (
+        <p className="risk-message">Đang chờ snapshot xâm nhập</p>
+      ) : (
+        <>
+          <div className="risk-meta">
+            <span>ID theo vết</span>
+            <strong>{risk.track_id}</strong>
+          </div>
+          <div className="risk-probabilities">
+            {['LOW', 'MEDIUM', 'HIGH'].map((label) => {
+              const probability = Number(probabilities[label] || 0);
+              return (
+                <div className="risk-probability" key={label}>
+                  <div>
+                    <span>{RISK_LABELS[label]}</span>
+                    <strong>{Math.round(probability * 100)}%</strong>
+                  </div>
+                  <div className="risk-bar" aria-label={`Xác suất ${RISK_LABELS[label]}`}>
+                    <span
+                      className={`risk-bar-fill risk-${label.toLowerCase()}`}
+                      style={{ width: `${Math.min(Math.max(probability * 100, 0), 100)}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function EventTable({ events }) {
   return (
     <section className="event-panel">
@@ -251,6 +304,7 @@ function App() {
   const [status, setStatus] = useState('');
   const [events, setEvents] = useState([]);
   const [stats, setStats] = useState({ progress: 0, fps: 0, people_count: 0, inside_count: 0, intrusion_count: 0 });
+  const [risk, setRisk] = useState({ available: null, level: null, probabilities: {} });
   const [busy, setBusy] = useState(false);
   const [fastMode, setFastMode] = useState(true);
   const backendStatus = useBackendHealth();
@@ -331,10 +385,21 @@ function App() {
         if (message.type === 'statistics') {
           setStatus('RUNNING');
           setStats((current) => ({ ...current, ...message.data }));
+          if ('risk_model_available' in message.data) {
+            setRisk((current) => ({
+              ...current,
+              available: message.data.risk_model_available,
+              error: message.data.risk_model_error || null
+            }));
+          }
         }
         if (message.type === 'intrusion') setEvents((current) => [message.data, ...current]);
+        if (message.type === 'risk') setRisk((current) => ({ ...current, ...message.data }));
         if (message.type === 'completed') setStatus(message.data.status || 'COMPLETED');
-        if (message.type === 'error') setStatus('FAILED');
+        if (message.type === 'error') {
+          const detail = message.data?.message || 'Tiến trình xử lý thất bại';
+          setStatus(`ERROR: ${detail}`);
+        }
       };
       socket.onclose = () => {
         attempts += 1;
@@ -357,6 +422,13 @@ function App() {
   const start = async () => {
     if (!file || points.length < 3) return;
     setBusy(true);
+    closeSockets();
+    cleanupFrameUrl();
+    setLiveFrameUrl('');
+    // Mỗi lần Start là một job độc lập; không giữ sự kiện và thống kê của lần chạy trước.
+    setEvents([]);
+    setStats({ progress: 0, fps: 0, people_count: 0, inside_count: 0, intrusion_count: 0 });
+    setRisk({ available: null, level: null, probabilities: {} });
     try {
       const form = new FormData();
       form.append('file', file);
@@ -379,7 +451,6 @@ function App() {
       });
       if (!jobResponse.ok) throw new Error(await jobResponse.text());
       const created = await jobResponse.json();
-      setJobId(created.job_id);
       setJobId(created.job_id);
       setStatus('PENDING');
       connectJobSockets(created.job_id);
@@ -407,6 +478,7 @@ function App() {
     setStatus('');
     setEvents([]);
     setStats({ progress: 0, fps: 0, people_count: 0, inside_count: 0, intrusion_count: 0 });
+    setRisk({ available: null, level: null, probabilities: {} });
     setPoints([]);
   };
 
@@ -439,6 +511,7 @@ function App() {
             onFastModeChange={setFastMode}
           />
           <StatisticsPanel stats={stats} />
+          <RiskPanel risk={risk} />
         </aside>
       </div>
       <EventTable events={events} />

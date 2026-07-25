@@ -14,16 +14,24 @@ Luồng chính của hệ thống:
 6. Hệ thống lấy điểm giữa cạnh dưới bounding box làm vị trí chân người.
 7. FSM riêng của từng `track_id` quản lý các trạng thái `OUTSIDE`, `CONFIRMING`, `INTRUDING`, `EXITING` và `LOST`.
 8. Nếu chân người nằm trong vùng cấm đủ `confirm_frames` thì FSM tạo một cảnh báo; rung ở biên vùng hoặc mất dấu ngắn không tạo cảnh báo lặp.
-9. Frontend nhận progress, thống kê, event cảnh báo và preview frame qua WebSocket.
+9. `FeatureExtractor` thu thập tốc độ, độ sâu vùng, thời gian đứng yên và các đặc trưng hành vi để tạo dataset mức cao.
+10. Frontend nhận progress, thống kê, event cảnh báo và preview frame qua WebSocket.
 
 ## Cấu Trúc
 
 - `backend/app`: FastAPI API, WebSocket, JobManager và lõi xử lý video.
+- `backend/app/risk`: trích đặc trưng và xuất dataset hành vi `LOW/MEDIUM/HIGH`.
+- `training`: pipeline train YOLO mức trung hiện có; phần mức cao không sửa folder này.
+- `high_level_training`: công cụ gộp dataset và hướng dẫn gán nhãn model mức cao.
 - `frontend/src`: giao diện React + Vite.
 - `electron`: Electron main process và preload.
 - `tests`: pytest cho API, JobManager, WebSocket và VideoProcessor.
 - `backend/data`: video upload runtime, không commit.
 - `backend/output`: output video, CSV và ảnh bằng chứng runtime, không commit.
+
+Mỗi job tạo thêm `high_level_events.csv` và `high_level_snapshots.csv`. Xem hướng dẫn tại `high_level_training/README.md`.
+
+Khi thu thập dữ liệu bằng CLI, dùng `--model` để chọn weights và `--camera-id` để đặt mã nguồn/góc quay. Hai tùy chọn này không thay đổi pipeline train YOLO trong `training/`.
 
 ## Yêu Cầu Cài Đặt
 
@@ -110,6 +118,30 @@ python -c "import ultralytics; import torch; print('ultralytics ok'); print(torc
 ```powershell
 npm install
 ```
+
+## Cấu hình model mức cao
+
+Backend mặc định tìm model tại:
+
+```text
+backend\models\risk_model.joblib
+```
+
+Copy model v5 đã train vào vị trí mặc định:
+
+```powershell
+New-Item -ItemType Directory -Force backend\models
+Copy-Item D:\datasets\high-level-model-v5\risk_model.joblib backend\models\risk_model.joblib
+```
+
+Hoặc dùng model ở vị trí khác:
+
+```powershell
+$env:RISK_MODEL_PATH="D:\datasets\high-level-model-v5\risk_model.joblib"
+```
+
+File `.joblib` là artifact nhị phân và không được commit. Nếu model không tồn tại hoặc
+không load được, YOLO/FSM vẫn xử lý video nhưng giao diện báo model rủi ro chưa sẵn sàng.
 
 ## Chạy Project Khi Phát Triển
 
@@ -208,6 +240,7 @@ npm run build
 - Backend REST API chạy ở `http://127.0.0.1:8000`.
 - Frontend Vite chạy ở `http://127.0.0.1:5173`.
 - WebSocket status: `/ws/jobs/{job_id}`.
+- Message `risk` gửi mức `LOW/MEDIUM/HIGH` và xác suất theo từng snapshot hành vi.
 - WebSocket preview frame: `/ws/jobs/{job_id}/frames`.
 - Preview frame gửi binary JPEG, không dùng Base64.
 - Không commit `backend/data`, `backend/output`, `dist`, `node_modules`, file log hoặc file PID.
