@@ -11,7 +11,7 @@ def main() -> int:
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--zone", required=True, type=Path)
     parser.add_argument("--output", default=Path("backend/output/cli"), type=Path)
-    parser.add_argument("--confidence", default=0.35, type=float)
+    parser.add_argument("--confidence", default=0.15, type=float)
     parser.add_argument("--confirm-frames", default=5, type=int)
     parser.add_argument("--process-width", default=None, type=int)
     parser.add_argument("--frame-stride", default=1, type=int)

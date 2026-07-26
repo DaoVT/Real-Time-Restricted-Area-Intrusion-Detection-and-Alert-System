@@ -7,7 +7,7 @@ DARK_THRESHOLD = 75
 BLUR_THRESHOLD = 80
 
 CLAHE_CLIP = 1.8
-UNSHARP_STRENGTH = 0.9
+UNSHARP_STRENGTH = 0.6
 GAMMA_VALUE = 1.8
 # -----------------------------------
 
@@ -32,11 +32,12 @@ def apply_unsharp_mask(frame: np.ndarray, sigma: float = 1.0) -> np.ndarray:
 
 def apply_gamma_correction(frame: np.ndarray) -> np.ndarray:
     """
-    Làm sáng video cực tối.
+    Làm sáng video cực tối và khử nhiễu nhẹ để tránh nhiễu hạt do khuếch đại sáng.
     """
     inv_gamma = 1.0 / GAMMA_VALUE
     table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
-    return cv2.LUT(frame, table)
+    processed = cv2.LUT(frame, table)
+    return cv2.fastNlMeansDenoisingColored(processed, None, 5, 5, 7, 21)
 
 def detect_best_filter(frame: np.ndarray) -> str:
     """
@@ -52,9 +53,11 @@ def detect_best_filter(frame: np.ndarray) -> str:
     else:
         small_frame = frame
 
-    gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
-    mean_brightness = np.mean(gray)
-    blur_metric = cv2.Laplacian(gray, cv2.CV_64F).var()
+    gray_small = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
+    mean_brightness = np.mean(gray_small)
+    
+    gray_full = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    blur_metric = cv2.Laplacian(gray_full, cv2.CV_64F).var()
     
     if mean_brightness < VERY_DARK_THRESHOLD:
         if blur_metric < BLUR_THRESHOLD:

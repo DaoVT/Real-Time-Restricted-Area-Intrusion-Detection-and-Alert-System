@@ -84,7 +84,7 @@ function VideoPanel({ file, previewUrl, liveFrameUrl, points, onAddPoint, onClea
   );
 }
 
-function ControlPanel({ onFileChange, onStart, onStop, onReset, disabled, status, backendStatus, pointsCount, fastMode, onFastModeChange }) {
+function ControlPanel({ onFileChange, onStart, onStop, onReset, disabled, status, backendStatus, pointsCount, fastMode, onFastModeChange, confirmFrames, onConfirmFramesChange }) {
   return (
     <section className="control-panel">
       {/* <h2>Controls</h2> -> <h2>Bảng điều khiển</h2> */}
@@ -111,9 +111,13 @@ function ControlPanel({ onFileChange, onStart, onStop, onReset, disabled, status
       </div>
       <label className="toggle-row">
         <input type="checkbox" checked={fastMode} onChange={(event) => onFastModeChange(event.target.checked)} />
-        {/* <span>Fast mode</span> -> <span>Chế độ nhanh</span> */}
         <span>Chế độ nhanh</span>
       </label>
+
+      <div className="slider-row">
+        <span>Số frame xác nhận: <strong>{confirmFrames}</strong></span>
+        <input type="range" min="1" max="60" step="1" value={confirmFrames} onChange={(e) => onConfirmFramesChange(parseInt(e.target.value, 10))} />
+      </div>
       <div className="status-strip">
         {/* <span>Backend</span> -> <span>Hệ thống nền</span> */}
         <span>Hệ thống nền</span>
@@ -253,6 +257,7 @@ function App() {
   const [stats, setStats] = useState({ progress: 0, fps: 0, people_count: 0, inside_count: 0, intrusion_count: 0 });
   const [busy, setBusy] = useState(false);
   const [fastMode, setFastMode] = useState(true);
+  const [confirmFrames, setConfirmFrames] = useState(15);
   const backendStatus = useBackendHealth();
   const socketsRef = useRef([]);
   const frameUrlRef = useRef('');
@@ -368,8 +373,8 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           video_id,
-          confidence: 0.35,
-          confirm_frames: 5,
+          confidence: 0.15,
+          confirm_frames: confirmFrames,
           process_width: fastMode ? 640 : null,
           frame_stride: fastMode ? 3 : 1,
           save_output_video: !fastMode,
@@ -379,7 +384,6 @@ function App() {
       });
       if (!jobResponse.ok) throw new Error(await jobResponse.text());
       const created = await jobResponse.json();
-      setJobId(created.job_id);
       setJobId(created.job_id);
       setStatus('PENDING');
       connectJobSockets(created.job_id);
@@ -437,6 +441,8 @@ function App() {
             pointsCount={points.length}
             fastMode={fastMode}
             onFastModeChange={setFastMode}
+            confirmFrames={confirmFrames}
+            onConfirmFramesChange={setConfirmFrames}
           />
           <StatisticsPanel stats={stats} />
         </aside>

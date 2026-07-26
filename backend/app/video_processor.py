@@ -34,7 +34,7 @@ class Detection:
 
 
 class PersonDetector:
-    def __init__(self, confidence: float = 0.35, model_name: str = "best.pt") -> None:
+    def __init__(self, confidence: float = 0.15, model_name: str = "best.pt") -> None:
         self.confidence = confidence
         try:
             from ultralytics import YOLO
