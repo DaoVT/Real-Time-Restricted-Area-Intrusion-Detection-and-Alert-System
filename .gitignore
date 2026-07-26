@@ -24,6 +24,9 @@ sample-videos/
 Real-Time-Restricted-Area-Intrusion-Detection-and-Alert-System/
 
 # Custom ignores
+*.md
+!/README.md
+!/REQUIREMENTS.md
 TRAIN_MEGA_GUIDE.md
 TRAIN_KAGGLE_MEGA_GUIDE.md
 TEST_REPORT.md
