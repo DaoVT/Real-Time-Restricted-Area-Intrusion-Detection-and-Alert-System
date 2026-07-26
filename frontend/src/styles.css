@@ -137,7 +137,8 @@ aside {
 }
 
 .control-panel,
-.statistics-panel {
+.statistics-panel,
+.risk-panel {
   display: grid;
   gap: 14px;
 }
@@ -214,6 +215,71 @@ aside {
   display: block;
   font-size: 26px;
   margin-top: 8px;
+}
+
+.risk-heading,
+.risk-meta,
+.risk-probability > div:first-child {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.risk-badge {
+  border-radius: 4px;
+  color: #ffffff;
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+.risk-low {
+  background: #15803d;
+}
+
+.risk-medium {
+  background: #b45309;
+}
+
+.risk-high {
+  background: #b42318;
+}
+
+.risk-message {
+  color: #566574;
+  margin: 0;
+}
+
+.risk-meta {
+  border-bottom: 1px solid #e5ebf0;
+  padding-bottom: 10px;
+}
+
+.risk-probabilities {
+  display: grid;
+  gap: 10px;
+}
+
+.risk-probability {
+  display: grid;
+  gap: 5px;
+}
+
+.risk-probability span,
+.risk-probability strong {
+  font-size: 13px;
+}
+
+.risk-bar {
+  background: #e5ebf0;
+  border-radius: 3px;
+  height: 7px;
+  overflow: hidden;
+}
+
+.risk-bar-fill {
+  display: block;
+  height: 100%;
+  transition: width 160ms ease;
 }
 
 .event-panel {

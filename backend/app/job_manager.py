@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from .risk import RiskPredictor
 from .schemas import JobCreate, JobSnapshot, JobStatus
 from .video_processor import VideoProcessor
 
@@ -18,10 +19,19 @@ class JobRecord:
 
 
 class JobManager:
-    def __init__(self, video_dir: Path, output_dir: Path, loop: asyncio.AbstractEventLoop | None = None) -> None:
+    def __init__(
+        self,
+        video_dir: Path,
+        output_dir: Path,
+        loop: asyncio.AbstractEventLoop | None = None,
+        risk_predictor: RiskPredictor | None = None,
+        risk_model_error: str | None = None,
+    ) -> None:
         self.video_dir = Path(video_dir)
         self.output_dir = Path(output_dir)
         self.loop = loop
+        self.risk_predictor = risk_predictor
+        self.risk_model_error = risk_model_error
         self._jobs: dict[UUID, JobRecord] = {}
         # Job được đọc/ghi từ request thread và worker thread, nên mọi snapshot đi qua lock.
         self._lock = threading.RLock()
@@ -41,6 +51,8 @@ class JobManager:
             video_id=payload.video_id,
             status=JobStatus.PENDING,
             progress=0.0,
+            risk_model_available=self.risk_predictor is not None,
+            risk_model_error=self.risk_model_error,
         )
         stop_event = threading.Event()
         record = JobRecord(snapshot=snapshot, stop_event=stop_event)
@@ -108,11 +120,41 @@ class JobManager:
                             "people_count": snapshot.people_count,
                             "inside_count": snapshot.inside_count,
                             "intrusion_count": snapshot.intrusion_count,
+                            "risk_model_available": snapshot.risk_model_available,
+                            "risk_model_error": snapshot.risk_model_error,
                         },
                     },
                 )
             for event in events:
                 self._emit(job_id, {"type": "intrusion", "data": event})
+
+        def on_risk(prediction: dict) -> None:
+            if not prediction.get("available"):
+                error = str(prediction.get("error") or "risk prediction unavailable")
+                self._update(
+                    job_id,
+                    risk_model_available=False,
+                    risk_model_error=error,
+                )
+                self._emit(
+                    job_id,
+                    {
+                        "type": "risk",
+                        "data": {"available": False, "error": error},
+                    },
+                )
+                return
+
+            snapshot = self._update(
+                job_id,
+                risk_model_available=True,
+                risk_model_error=None,
+                risk_level=prediction["level"],
+                risk_track_id=prediction["track_id"],
+                risk_probabilities=prediction["probabilities"],
+            )
+            if snapshot:
+                self._emit(job_id, {"type": "risk", "data": prediction})
 
         try:
             processor = VideoProcessor(
@@ -128,6 +170,8 @@ class JobManager:
                 frame_stride=payload.frame_stride,
                 save_output_video=payload.save_output_video,
                 filter_type=payload.filter_type,
+                risk_predictor=self.risk_predictor,
+                risk_callback=on_risk,
             )
             result = processor.run()
             status = JobStatus.STOPPED if result.get("stopped") else JobStatus.COMPLETED

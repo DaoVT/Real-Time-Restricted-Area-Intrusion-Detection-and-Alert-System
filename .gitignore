@@ -10,6 +10,9 @@ dist-electron/
 
 backend/data/
 backend/output/
+high_level_training/datasets/
+models/*.joblib
+backend/models/*.joblib
 sample-videos/
 *.log
 *.err

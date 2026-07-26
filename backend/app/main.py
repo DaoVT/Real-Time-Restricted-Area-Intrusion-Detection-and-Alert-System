@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -11,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .frame_manager import FrameConnectionManager
 from .job_manager import JobManager
+from .risk import RiskPredictor
 from .schemas import JobCreate, JobCreateResponse, JobResultResponse, JobSnapshot, VideoUploadResponse
 from .websocket_manager import ConnectionManager
 
@@ -18,6 +20,12 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE_DIR / "data"
 VIDEO_DIR = DATA_DIR / "videos"
 OUTPUT_DIR = BASE_DIR / "output"
+RISK_MODEL_PATH = Path(
+    os.environ.get(
+        "RISK_MODEL_PATH",
+        str(BASE_DIR / "models" / "risk_model.joblib"),
+    )
+).expanduser()
 # Thư mục runtime này được tạo tự động và không nên commit vào git.
 VIDEO_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -44,7 +52,18 @@ app.mount("/outputs", StaticFiles(directory=OUTPUT_DIR), name="outputs")
 
 connections = ConnectionManager()
 frame_connections = FrameConnectionManager()
-jobs = JobManager(VIDEO_DIR, OUTPUT_DIR)
+try:
+    risk_predictor = RiskPredictor(RISK_MODEL_PATH)
+    risk_model_error = None
+except (OSError, ValueError) as exc:
+    risk_predictor = None
+    risk_model_error = str(exc)
+jobs = JobManager(
+    VIDEO_DIR,
+    OUTPUT_DIR,
+    risk_predictor=risk_predictor,
+    risk_model_error=risk_model_error,
+)
 
 
 @asynccontextmanager
